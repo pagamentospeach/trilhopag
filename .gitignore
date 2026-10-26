@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# segredos ficam nas Project Settings da Vercel
+.env
+.env.*
+
+# logs locais de sessão
+.claude-flow/sessions

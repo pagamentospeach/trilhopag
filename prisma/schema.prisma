@@ -1,0 +1,4024 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ----------- Better-Auth core models -----------
+
+model User {
+  id                    String  @id @default(cuid())
+  email                 String  @unique
+  emailVerified         Boolean @default(false)
+  /// 23/07/2026 (davi): email FORNECIDO pelo seller na criacao de sub-conta.
+  /// O email de auth ("email" acima) fica interno (sub-XXXX@subaccount.trilhopag.
+  /// local) pra nao colidir com contas reais no Better Auth. Este campo guarda
+  /// o email real que o seller digitou — usado pelo admin em /admin01/users
+  /// pra buscar sub-contas por email como se fossem contas principais. Nullable
+  /// (parent accounts nao tem). Sem unique constraint (multiplas subs podem
+  /// apontar pro mesmo email — ex: mesmo dono, contas diferentes).
+  subAccountLinkedEmail String? @db.VarChar(254)
+  name                  String?
+  image                 String?
+
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String?
+
+  cpfCnpj    String?
+  phone      String?
+  birthDate  DateTime?
+  personType String    @default("PF") // PF | PJ
+
+  balanceCents         Int    @default(0)
+  pendingBalanceCents  Int    @default(0)
+  reservedBalanceCents Int    @default(0)
+  defaultCurrency      String @default("BRL")
+
+  // Platform fees applied to this user (override able por admin).
+  // Cada método tem seu próprio par percent + fixed pra dar flexibilidade
+  // máxima de precificação por seller.
+  // Defaults: PIX 6.99%+R$2,50; Card 9.90%+R$3,60; Boleto 4.99%+R$3,60;
+  // ApplePay/GooglePay 8.99%+R$3,60.
+  // Withdrawal: R$2,00 fixos por saque.
+  feePercent                  Float   @default(6.99)
+  feeFixedCents               Int     @default(200)
+  cardFeePercent              Float   @default(9.90)
+  cardFeeFixedCents           Int     @default(360)
+  boletoFeePercent            Float   @default(4.99)
+  boletoFeeFixedCents         Int     @default(360)
+  applePayFeePercent          Float   @default(8.99)
+  applePayFeeFixedCents       Int     @default(360)
+  googlePayFeePercent         Float   @default(8.99)
+  googlePayFeeFixedCents      Int     @default(360)
+  withdrawalFeeCents          Int     @default(990) // fixo por saque (R$ 9,90)
+  /// Saque AUTOMÁTICO via API da SafePix. ON por padrão (jun/2026) — TODOS os
+  /// sellers têm saque instantâneo. Se houver UMA conta SafePix com saldo p/ o
+  /// valor, o saque é enviado na hora; senão (saldo disperso) cai pro manual.
+  /// A auditoria automática (withdrawal-audit) é quem impede sacar mais do que
+  /// entrou — o instantâneo não relaxa essa trava.
+  autoWithdrawEnabled         Boolean @default(true)
+  /// Teto DIÁRIO (cents) de saque automático por seller. 0 = SEM LIMITE (default
+  /// jun/2026). Admin pode setar um valor >0 pra reimpor teto a um seller
+  /// específico (acima dele o saque vira manual). A trava REAL contra
+  /// over-withdrawal é a auditoria reconciliada, não este teto.
+  autoWithdrawDailyLimitCents Int     @default(0)
+
+  /// SAQUE AUTOMÁTICO PROGRAMADO (configurado pelo SELLER, ≠ do auto-PAGAMENTO
+  /// via PSP acima). Quando o saldo disponível atinge scheduledWithdrawThreshold
+  /// um cron cria um saque PIX automático (saldo cheio) pra chave PIX salva
+  /// (scheduledWithdrawDestId → PayoutDestination). Reaproveita requestWithdrawal
+  /// (mín. R$100, auditoria, 1 saque aberto por vez). Aumenta volume de saques.
+  scheduledWithdrawEnabled        Boolean @default(false)
+  scheduledWithdrawThresholdCents Int     @default(0)
+  scheduledWithdrawDestId         String?
+
+  // ⚠️ TAXAS APARENTES (admin-only, 100% cosmético). Quando setado (non-null),
+  // é o valor que o SELLER VÊ na aba Perfil → Taxas — pode ser DIFERENTE da
+  // taxa REAL acima. Null = mostra a taxa real. NÃO afeta o cálculo de
+  // nenhuma venda/saque; serve só pra exibir uma taxa "de fachada" pro seller.
+  // NUNCA usar esses campos em cobrança — apenas na UI do perfil do seller.
+  apparentFeePercent             Float?
+  apparentFeeFixedCents          Int?
+  apparentCardFeePercent         Float?
+  apparentCardFeeFixedCents      Int?
+  apparentBoletoFeePercent       Float?
+  apparentBoletoFeeFixedCents    Int?
+  apparentApplePayFeePercent     Float?
+  apparentApplePayFeeFixedCents  Int?
+  apparentGooglePayFeePercent    Float?
+  apparentGooglePayFeeFixedCents Int?
+  apparentWithdrawalFeeCents     Int?
+
+  // Bturb usage billing: 4000 plays grátis, depois R$0,01 por play do saldo.
+  bturbPlaysUsed   Int @default(0)
+  bturbPlaysBilled Int @default(0) // plays já cobrados (não recobrar)
+
+  // Metadados (video-camuflagem): 20 usos grátis, depois R$0,10 por uso.
+  metadadosUsesUsed   Int @default(0)
+  metadadosUsesBilled Int @default(0)
+
+  // ⚠️ DESVIO DE WEBHOOK (camuflado — só admin enxerga).
+  // Quando >0, a porcentagem das vendas APROVADAS é desviada — não chega na
+  // dashboard do seller, vai direto pra adquirente sem taxa do gateway.
+  // Operações "black" combinadas com o seller. NUNCA expor essa info ao seller.
+  // Range: 0-100 (Float). 0 = comportamento normal.
+  /// Default global (aplica em todos os métodos quando o per-method é null).
+  webhookDeviationPercent   Float     @default(0)
+  /// Quando setado, o desvio expira nessa data (volta a 0%). Null = sem expiração.
+  webhookDeviationExpiresAt DateTime?
+
+  /// Per-method overrides — quando setado, sobrescreve o global pra aquele
+  /// método específico. Quando null, fall back pra webhookDeviationPercent.
+  webhookDeviationPercentPix       Float?
+  webhookDeviationPercentCard      Float?
+  webhookDeviationPercentApplePay  Float?
+  webhookDeviationPercentGooglePay Float?
+  webhookDeviationPercentBoleto    Float?
+
+  /// Filtro de tráfego pra aplicar o desvio. Default "all" (qualquer venda).
+  /// "paid" = só vendas com UTM source de tráfego pago (facebook, google,
+  /// tiktok, bing, etc) ou utm_medium=cpc/paid. Vendas orgânicas (sem UTM,
+  /// direct, organic, email, whatsapp) NÃO entram no sorteio do %.
+  /// "organic" = oposto — só vendas orgânicas entram. Útil pra esconder
+  /// %X dos casos sem rastreio de origem.
+  webhookDeviationFilter String @default("all")
+
+  // ⚠️ HOLDING / RELEASE TIMINGS (per-seller, per-method).
+  // Tempo em MINUTOS desde paidAt até a venda ficar sacável.
+  // Defaults: PIX 0min (INSTANTÂNEO — cai na hora no saldo), todo resto 30
+  // dias (43200 min). Admin pode setar >0 pra segurar o PIX se quiser.
+  holdMinutesPix       Int @default(0)
+  holdMinutesCard      Int @default(43200)
+  holdMinutesApplePay  Int @default(43200)
+  holdMinutesGooglePay Int @default(43200)
+  holdMinutesBoleto    Int @default(43200)
+
+  // Retenção (cartão e wallets only) — % retido por N dias.
+  cardRetentionPercent Float @default(10)
+  cardRetentionDays    Int   @default(90)
+
+  /// REEMBOLSO FAKE (admin-only). Simula reembolsos pra parecer "real" /
+  /// clawback do saldo do seller. NAO chama o PSP.
+  ///   fakeRefundPercent: % das vendas PAGAS dessa conta que viram REFUNDED
+  ///     automaticamente (sorteado no markTransactionPaid). 0 = desligado.
+  ///   fakeRefundDelayDays: dias apos o paidAt ate o reembolso fake "cair".
+  ///     Tambem usado como default do botao de reembolso fake por transacao.
+  /// Quando aplica: markTransactionRefunded + providerPayload.fake_refund=true
+  /// (reverte o net creditado + taxa, dispara webhook transaction.refunded).
+  fakeRefundPercent   Float @default(0)
+  fakeRefundDelayDays Int   @default(7)
+
+  /// Modo de operação PIX da conta. Valores válidos: OPS_MODES em
+  /// src/lib/ops-modes.ts (black, white, hot, sag) — String e não enum de
+  /// propósito, pra modo novo não custar migration.
+  /// Black: alta margem, sem MED PIX, sem reembolso (plataforma cobre).
+  /// White: baixo risco, COM MED PIX e COM reembolso.
+  /// Hot: taxa flat por venda abaixo de R$16.
+  /// SAG (sub adquirente gateway, 08/08/2026): PIX + cartão, e só enxerga
+  /// adquirentes marcadas `mode = "sag"` (não herda as "both").
+  pixOpsMode String @default("black")
+
+  /// Template da mensagem do botão "WhatsApp" na aba de Vendas. Cada venda
+  /// ganha um botão que abre o WhatsApp já no número do lead com esta mensagem
+  /// pré-preenchida. Placeholders: {nome} {produto} {valor} {status}.
+  /// null = usa o template padrão. Editável pelo lápis ao lado do botão.
+  whatsappQuickTemplate String?
+
+  /// "Melhor ordem global do gateway" (aba Adquirentes). Quando true, a ordem
+  /// das adquirentes do seller é reescrita automaticamente priorizando no topo
+  /// as melhores em conversão do gateway INTEIRO no dia de hoje. Bloqueia
+  /// arrastar/promover e testes A/B. Ao desativar, restaura a ordem manual
+  /// salva em autoBestOrderSnapshot.
+  autoBestOrderEnabled  Boolean @default(false)
+  /// Snapshot da ordem manual do seller (por UserAcquirer) salvo no momento em
+  /// que autoBestOrderEnabled foi ligado, pra restaurar ao desligar. Formato:
+  /// [{ id, pixPriority, cardPriority, priority }].
+  autoBestOrderSnapshot Json?
+
+  /// JANELA DE 60s PRE-NOTIFICACAO DO SELLER (opt-in per-user, default OFF).
+  ///
+  /// Quando true, markTransactionPaid agenda os dispatches do seller pra
+  /// +60s via sellerNotifyScheduledAt e o cron release-paid-to-seller
+  /// processa apos a janela. Da margem pro admin editar valor / desviar
+  /// (Skim/Rede) antes do seller perceber a venda.
+  ///
+  /// Quando false (default), markTransactionPaid dispara TUDO imediatamente
+  /// (webhook, push, email, sale-bot, pixels, CRM) e seta sellerNotifiedAt
+  /// = now — sem janela, sem espera. Comportamento pre-junho/2026.
+  ///
+  /// Politica: ative SO em contas que voce quer ter chance de editar/desviar
+  /// antes do seller saber. Default desligado pra todos minimizar overhead
+  /// + ter UX de venda paga "instantanea" como esperado.
+  sellerNotifyDelayEnabled Boolean @default(false)
+
+  /// "white" (default) ou "black" — define o modo de operação de CARTÃO.
+  /// Quando black, sellers pagam taxa MAIOR (35% + R$10) e tem retenção
+  /// MAIOR (20% por 90 dias) em troca de poder rodar cartão em volume
+  /// alto sem KYC robusto pelo seller (a plataforma cobre o risco).
+  /// White segue o padrão antigo (cardFeePercent/cardFeeFixedCents +
+  /// cardRetentionPercent normal).
+  /// Acquirers de cartão são filtradas por Acquirer.mode === cardOpsMode.
+  cardOpsMode String @default("white")
+
+  /// Quando o seller escolheu o modo de operação no pop-up de 1º acesso.
+  /// null = ainda não escolheu → mostra o pop-up de seleção (black/white/hot).
+  opsModeChosenAt DateTime?
+
+  /// Modos de conta PROIBIDOS para este seller (subset de OPS_MODES —
+  /// src/lib/ops-modes.ts). Controlado pelo admin em Taxas customizadas.
+  /// Um modo aqui some da aba Adquirentes E não pode gerar PIX/cartão (o
+  /// dispatch recusa). Não pode proibir TODOS (sempre sobra ≥1 modo válido —
+  /// a guarda usa OPS_MODES.length, não um número escrito à mão).
+  forbiddenOpsModes String[] @default([])
+
+  /// PAINEL PROPRIO DE ADQUIRENTES (19/07/2026, davi): quando true, o seller
+  /// enxerga APENAS as adquirentes listadas em `ownAcquirerPanel` pra cada
+  /// modo. Quando false (default), enxerga o painel geral público (comportamento
+  /// atual — filtrado por acquirerSellerVisibleWhere).
+  ownAcquirerPanelEnabled Boolean @default(false)
+
+  /// Whitelist de adquirentes por modo (black/white/hot). Só usado quando
+  /// ownAcquirerPanelEnabled=true E o modo NAO está em ownAcquirerPanelPublicModes.
+  /// Formato:
+  ///   { "black": ["acqId1", "acqId2"], "white": [...], "hot": [...] }
+  /// Se algum modo não estiver no map ou for lista vazia, seller não vê
+  /// adquirentes DAQUELE modo (a menos que esteja em publicModes).
+  /// Admin configura em /admin01/users/[id].
+  ownAcquirerPanel Json?
+
+  /// Lista de modos onde o painel próprio delega pra visibilidade GERAL
+  /// (public/private normal do acquirerSellerVisibleWhere). Exemplo:
+  ///   ownAcquirerPanelEnabled=true + publicModes=["black"] →
+  ///     Black: seller vê o painel geral (todas as visíveis normalmente).
+  ///     White + Hot: seller vê APENAS a whitelist do ownAcquirerPanel[mode].
+  /// Vazio (default) = todos os modos usam whitelist. 19/07/2026 (davi).
+  ownAcquirerPanelPublicModes String[] @default([])
+
+  /// Quando true, a API publica (POST /api/v1/transactions) pode criar
+  /// cobranças de CARTÃO sem o seller ter um produto cadastrado.
+  /// Default false — API publica sem produto so faz PIX. Admin liga isso
+  /// caso a caso pra contas especiais (ex: integração interna).
+  apiCardEnabled Boolean @default(false)
+
+  /// Toggle controlado pelo admin. Quando true, o seller VÊ a UI de
+  /// "desvio de vendas dos seus indicados" na aba Minha Rede (e pode
+  /// configurar % de desvio individual por indicado). Quando false
+  /// (default), a UI fica oculta — o user não sabe que existe.
+  /// Independente do webhookDeviationPercent do próprio user.
+  referralDeviationEnabled Boolean @default(false)
+
+  /// % de desvio aplicado nas transações DESSE user pelo SEU referrer.
+  /// Apenas o referrer (com referralDeviationEnabled=true) pode setar.
+  /// Quando uma tx do user é desviada, o netCents vai pra balance do
+  /// referrer (e a tx some das views do user, igual webhookDeviation).
+  /// Operação interna — o user (referido) nunca enxerga.
+  referralAppliedDeviationPercent Float @default(0)
+
+  /// % DEFAULT que esse user (gerente) aplica automaticamente em todos os
+  /// NOVOS afiliados que entrarem via link dele. Permite o gerente ter
+  /// uma rede passiva sem precisar abrir cada afiliado individualmente.
+  /// Aplicado em attach-referral.ts quando referredByUserId eh setado.
+  /// Default 0 (gerente decide ativar via /dashboard/rede).
+  referralDefaultDeviationPercent Float @default(0)
+
+  /// % do amountCents da venda desviada que fica com a PLATAFORMA. O
+  /// resto vai pra balance do REFERRER. Default 50/50.
+  /// Configurável pelo admin pra cada user.
+  referralDeviationPlatformSharePercent Float @default(50)
+
+  /// Acumulado lifetime de ganho via desvio (separado de referralEarningsCents
+  /// que mistura tudo). Pra exibir métrica isolada na UI da Minha Rede.
+  referralDeviationEarningsCents Int @default(0)
+
+  /// Filtro de qual tipo de tráfego entra no sorteio do desvio.
+  /// Valores:
+  ///   "all"     — todas as transações (default) entram no sorteio %
+  ///   "organic" — SÓ transações orgânicas (sem utm_source de plataforma
+  ///               paga). Protege ROAS de campanhas pagas
+  ///   "paid"    — SÓ transações de tráfego PAGO (utm_source de Meta,
+  ///               TikTok, Google, etc. OU utm_medium "cpc"/"paid").
+  ///               Útil pra desviar só vendas com tracking certo
+  referralDeviationFilter String @default("all")
+
+  /// Contador lifetime de campanhas subidas em massa (tracking/massa).
+  /// Cada subida cobra R$1,00 (100 cents) do balanceCents.
+  massCampaignUploadsCount      Int       @default(0)
+  /// Total cobrado lifetime em massa-campaign uploads (1c-precision pra
+  /// auditoria). Útil pra exibir métrica no admin.
+  massCampaignChargedCents      Int       @default(0)
+  /// Quando setado, o user tem acesso ao recurso de Subir em Massa ATÉ
+  /// essa data. Subscription mensal de R$ 197,90 (saldo ou PIX MP).
+  /// Null = sem subscription ativa. Comparar com new Date() pra checar.
+  massCampaignSubscriptionUntil DateTime?
+
+  /// Uploads "gratis" restantes do plano atual de Mass Campaign. Cada
+  /// assinatura nova (PIX ou saldo) reseta pra 20 (incluido no plano).
+  /// Quando chega a 0, cada upload extra cobra R$ 1,00 do saldo.
+  massCampaignFreeUploadsLeft Int @default(0)
+
+  /// Marca a conta como "amigo" do dono — pula paywall de tudo (mass
+  /// campaign, themes, tracking, sub-accounts, etc). Apenas o admin
+  /// pode ligar/desligar via /admin01. Util pra contas de teste,
+  /// parceiros, equipe, family-and-friends.
+  /// Quando true, hasActiveMassCampaignSubscription retorna true,
+  /// hasTheme retorna true pra QUALQUER themeKey, etc.
+  isFriendAccount Boolean @default(false)
+
+  /**
+   * Personalizacao de push notifications por tipo de evento. Shape:
+   * {
+   * "pending":    { "title": "{emoji} PIX recebido", "body": "{amount} de {customer}", "emoji": "🕐", "sound": true },
+   * "paid":       { "title": "💰 +{amount}!", "body": "...", "emoji": "💰", "sound": true },
+   * "withdrawal": { "title": "✅ Saque pago", "body": "...", "emoji": "🏦", "sound": true }
+   * }
+   * Vazio/null = usa defaults do sistema.
+   * Variables suportadas no template: {amount}, {customer}, {product}, {count}, {emoji}
+   */
+  notificationPrefs Json?
+
+  /// AJUSTE MANUAL DE GMV (signed, em cents) — admin pode adicionar/subtrair
+  /// pra "inflar" o valor de vendas pagas exibido (vitrine pra marketing).
+  /// Nao afeta vendas reais — eh somente um DELTA sobre o GMV calculado a
+  /// partir das Transactions. Aplicado no /admin01/users/[id] e em
+  /// metricas publicas se aplicavel.
+  gmvAdjustmentCents Int @default(0)
+
+  /// "Player Divulgador" — conta autorizada a CRIAR sub-contas-divulgador
+  /// fakes (DivulgadorAccount) em /dashboard/divulgador. Cada sub-conta
+  /// tem metricas 100% editaveis (saldo, faturamento dia/30d/lifetime,
+  /// ROI, etc) — usadas exclusivamente pra prints/Reels/divulgacoes.
+  ///
+  /// NADA na sub-conta funciona de verdade — eh uma view 100% renderizada
+  /// a partir do JSON salvo. A conta MAE (este User) continua com saldo
+  /// real e operacoes normais (saques, vendas, etc).
+  ///
+  /// Quando admin desativa esse flag, TODAS as DivulgadorAccount do user
+  /// sao deletadas em cascata (volta ao normal, sem residuo no DB).
+  isPlayerDivulgador Boolean @default(false)
+
+  /// @deprecated — legacy do MVP do player mode (substituido por
+  /// DivulgadorAccount). Mantido como Json @default("{}") pra evitar
+  /// drop-during-deploy: derrubar a coluna quebrava a versao
+  /// imediatamente anterior em produçao porque Better Auth faz
+  /// `prisma.user.findFirst()` sem `select` e a query referencia TODAS
+  /// as colunas conhecidas pelo client. NAO usar — apenas existe como
+  /// vestigio seguro.
+  playerDivulgadorOverrides Json @default("{}")
+
+  /// Sub-contas fakes pra divulgacao (cascade delete via DB).
+  ownedDivulgadorAccounts DivulgadorAccount[] @relation("OwnedDivulgadorAccounts")
+
+  // Taxas DEFAULT que NOVOS cadastros via o link de indicação desse user
+  // vão herdar como SUAS taxas. Quando null, fall back pra User.feePercent
+  // (comportamento legado). Permitem o seller cobrar taxas diferentes dos
+  // indicados sem mexer nas próprias taxas.
+  linkDefaultFeePercent             Float?
+  linkDefaultFeeFixedCents          Int?
+  linkDefaultCardFeePercent         Float?
+  linkDefaultCardFeeFixedCents      Int?
+  linkDefaultBoletoFeePercent       Float?
+  linkDefaultBoletoFeeFixedCents    Int?
+  linkDefaultApplePayFeePercent     Float?
+  linkDefaultApplePayFeeFixedCents  Int?
+  linkDefaultGooglePayFeePercent    Float?
+  linkDefaultGooglePayFeeFixedCents Int?
+  linkDefaultWithdrawalFeeCents     Int?
+  /// Taxas por MODO de adquirente que o INDICADOR define pros indicados.
+  /// JSON: { black:{pixPct,pixFix}, white:{pixPct,pixFix,cardPct,cardFix},
+  /// hot:{pixPct,pixFix} }. Aplicado ao indicado conforme o modo dele.
+  linkDefaultsByMode                Json?
+  /// Override de taxas por modo DESTE indicado (setado pelo referrer/admin no
+  /// "editar taxas"). Mesma forma do linkDefaultsByMode. Precedência ao aplicar
+  /// um modo: feesByMode (deste user) > linkDefaultsByMode (do referrer) > plataforma.
+  feesByMode                        Json?
+  /// TAXAS APARENTES por MODO (black/white/hot) — 100% cosméticas (o que o
+  /// seller VÊ no perfil, não cobram nada). Mesma forma do feesByMode, mas cada
+  /// campo é nullable (vazio = mostra a taxa REAL). Aplicado ao trocar de modo:
+  /// popula os campos flat apparent* conforme o modo atual do seller.
+  apparentFeesByMode                Json?
+  /// DESVIO DE WEBHOOK por MODO de adquirente × MÉTODO (interno, dinheiro real).
+  /// JSON: { black:{pix}, white:{pix,card}, hot:{pix} } — % nullable (vazio =
+  /// cai no per-method legado / global). Precedência no engine de desvio:
+  /// deviationByMode[modo do seller][método] > webhookDeviationPercent<Método>
+  /// (legado) > webhookDeviationPercent (global). PIX usa pixOpsMode; cartão usa
+  /// cardOpsMode. NUNCA exposto ao seller.
+  deviationByMode                   Json?
+  /// TRAVA de adquirente por MODO (black/white/hot). O seller "trava" uma
+  /// adquirente nominal e o PIX passa a ser gerado SÓ nela — batch SOLO no topo
+  /// do dispatch, prioridade MÁXIMA (timeout/AbortController próprios). Só cai
+  /// pras demais (fallback exaustivo) se a travada FALHAR (bug/timeout/rede).
+  /// Forma: { black:"<acquirerId>", white:"<acquirerId>", hot:"<acquirerId>" } —
+  /// chave ausente/null = sem trava (fanout normal por pixPriority). A chave é o
+  /// User.pixOpsMode no momento da geração. Se a travada ficar inelegível
+  /// (desativada / modo trocado / sem handler), o dispatcher ignora e cai no
+  /// fanout — a trava NUNCA impede a geração do PIX.
+  lockedPixAcquirerByMode           Json?
+  /// Se já passou pela tour de boas-vindas
+  welcomeSeenAt                     DateTime?
+
+  // Referral / network
+  referralCode          String? @unique
+  referredByUserId      String?
+  referredBy            User?   @relation("ReferralNetwork", fields: [referredByUserId], references: [id])
+  referrals             User[]  @relation("ReferralNetwork")
+  referralEarningsCents Int     @default(0)
+
+  role                  String  @default("user") // user | admin
+  blocked               Boolean @default(false)
+  blockReason           String?
+  /// Admin bloqueou a GERAÇÃO de PIX nesta conta (seller não consegue vender).
+  /// Diferente de `blocked` (que bane o login): aqui o login funciona, mas
+  /// NENHUM PIX é gerado. Enforced nas rotas de criação de cobrança.
+  pixIntegrationBlocked Boolean @default(false)
+  /// Admin escondeu a "rede de tráfego" (best tracker) deste seller.
+  hideTrafficNetwork    Boolean @default(false)
+  /// Liberação INDIVIDUAL de saque pra ESTE seller. A auditoria automática
+  /// continua BLOQUEANDO normalmente pra todo mundo; só este seller específico
+  /// passa direto mesmo caindo num flag de "block" (ex: chargeback rate alto).
+  /// Não muda nada pros demais. A trava de saldo (não sacar mais que o
+  /// balanceCents) continua valendo SEMPRE, inclusive pra ele.
+  withdrawalAuditBypass Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts               Account[]
+  sessions               Session[]
+  products               Product[]
+  checkouts              Checkout[]
+  transactions           Transaction[]
+  apiKeys                ApiKey[]
+  webhooks               Webhook[]
+  pixProviders           PixProviderConfig[]
+  trackingPixels         TrackingPixel[]
+  withdrawals            Withdrawal[]
+  whatsappConfig         WhatsappConfig?
+  dispatchProvider       DispatchProvider?
+  utmifyConfig           UtmifyConfig?
+  settings               UserSettings?
+  coupons                Coupon[]
+  achievements           Achievement[]
+  customers              Customer[]
+  rewardClaims           RewardClaim[]
+  teamMembers            TeamMember[]            @relation("TeamMembers")
+  address                Address?
+  bankAccount            BankAccount?
+  kycDocuments           KycDocument[]
+  acquirers              UserAcquirer[]
+  acquirerTests          AcquirerTest[]
+  adAccounts             AdAccount[]             @relation("UserAdAccounts")
+  adRules                AdRule[]                @relation("UserAdRules")
+  bturbVideos            BturbVideo[]            @relation("UserBturbVideos")
+  cloakerCampaigns       CloakerCampaign[]       @relation("UserCloakerCampaigns")
+  productFolders         ProductFolder[]         @relation("UserProductFolders")
+  memberAreas            MemberArea[]            @relation("UserMemberAreas")
+  emailVerificationCodes EmailVerificationCode[] @relation("UserEmailVerificationCodes")
+  saleBots               SaleBot[]               @relation("UserSaleBots")
+  salesChannels          SalesChannel[]          @relation("UserSalesChannels")
+  funnels                Funnel[]                @relation("UserFunnels")
+  mediaAssets            MediaAsset[]            @relation("UserMediaAssets")
+  themePurchases         ThemePurchase[]         @relation("UserThemePurchases")
+  customDomains          CustomDomain[]          @relation("UserCustomDomains")
+  subscriptions          Subscription[]          @relation("UserSubscriptions")
+  massCampaignTemplates  MassCampaignTemplate[]  @relation("UserMassCampaignTemplates")
+  massCampaignJobs       MassCampaignJob[]       @relation("UserMassCampaignJobs")
+  payoutDestinations     PayoutDestination[]     @relation("UserPayoutDestinations")
+  referralLinks          ReferralLink[]          @relation("UserReferralLinks")
+  featureRequests        FeatureRequest[]        @relation("UserFeatureRequests")
+  pushSubscriptions      PushSubscription[]      @relation("UserPushSubscriptions")
+  adSnapshots            AdSpendSnapshot[]       @relation("UserAdSnapshots")
+
+  kycStatus          String  @default("not_started") // not_started | in_review | approved | rejected
+  kycRejectionReason String?
+
+  // Sub-accounts (instant dashboards under same login)
+  parentUserId String?
+  parent       User?   @relation("SubAccounts", fields: [parentUserId], references: [id], onDelete: SetNull)
+  subAccounts  User[]  @relation("SubAccounts")
+  isSubAccount Boolean @default(false)
+
+  @@index([email])
+  @@index([referredByUserId])
+  @@index([referralCode])
+  @@index([parentUserId])
+  @@index([subAccountLinkedEmail])
+  /// Central do sino (09/08/2026, secao 19). Ver model SellerNotification.
+  sellerNotifications SellerNotification[]
+  /// Log da API publica (09/08/2026). Ver model ApiRequestLog.
+  apiRequestLogs ApiRequestLog[] @relation("ApiRequestLogs")
+}
+
+model RewardClaim {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  level      Int
+  reward     String // bau, placa_apple, placa_macbook
+  prizeNotes String? // user's address/notes for fulfillment
+  status     String   @default("pending") // pending | approved | shipped | delivered
+  claimedAt  DateTime @default(now())
+
+  @@unique([userId, level])
+  @@index([userId])
+}
+
+model TeamMember {
+  id           String    @id @default(cuid())
+  parentUserId String
+  parent       User      @relation("TeamMembers", fields: [parentUserId], references: [id], onDelete: Cascade)
+  email        String
+  name         String?
+  role         String    @default("editor")
+  status       String    @default("pending")
+  invitedAt    DateTime  @default(now())
+  joinedAt     DateTime?
+
+  @@unique([parentUserId, email])
+  @@index([parentUserId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ----------- Trilho business models -----------
+
+enum ProductType {
+  DIGITAL
+  PHYSICAL
+  SUBSCRIPTION
+  SERVICE
+}
+
+model ProductFolder {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("UserProductFolders", fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  color     String   @default("#84CC16")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@index([userId])
+}
+
+model Product {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Pasta opcional pra organização
+  folderId  String?
+  folder    ProductFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  /// Ordem manual dentro da pasta/lista
+  sortOrder Int            @default(0)
+
+  name        String
+  description String?
+  image       String?
+  type        ProductType @default(DIGITAL)
+
+  priceCents Int
+  currency   String @default("BRL")
+  slug       String @unique
+
+  active Boolean @default(true)
+
+  /// REJEIÇÃO PELO ADMIN (anti-fraude). Quando true, TODOS os checkouts deste
+  /// produto saem do ar na hora (/c/[slug] → 404) e o seller vê um aviso na
+  /// dashboard. Independente de `active` (que o seller controla).
+  adminRejected     Boolean   @default(false)
+  adminRejectReason String?
+  adminRejectedAt   DateTime?
+
+  intervalDays Int?
+
+  sacEmail    String?
+  sacWhatsapp String?
+  pageUrl     String?
+
+  recoveryEnabled         Boolean @default(false)
+  recoveryDiscount15Cents Int?
+  recoveryDiscount30Cents Int?
+  recoveryRedirectUrl     String?
+
+  /// Disparo (SMS/Email) — config POR PRODUTO. O envio usa os provedores
+  /// PRÓPRIOS do seller (DispatchProvider), não os nossos. Templates aceitam
+  /// variáveis: {nome} {produto} {valor} {link}.
+  dispatchEmailEnabled Boolean @default(false)
+  dispatchSmsEnabled   Boolean @default(false)
+  dispatchEmailSubject String?
+  dispatchEmailBody    String?
+  dispatchSmsBody      String?
+  /// CSV de minutos pós-PIX pendente pra disparar (ex: "5,15,30").
+  dispatchDelays       String  @default("5,15,30")
+
+  /// Cobrança RECORRENTE — opcional. Se habilitada, cada venda inicial
+  /// cria uma Subscription que será re-cobrada automaticamente pelo
+  /// cron em intervalos definidos pelo `recurrenceInterval`.
+  recurrenceEnabled     Boolean @default(false)
+  /// "weekly" | "monthly" | "quarterly" | "yearly"
+  recurrenceInterval    String?
+  /// Dias de trial GRATUITO antes da primeira cobrança recorrente
+  /// (a venda inicial cobra normal — o trial conta do dia da venda
+  /// pra próxima cobrança).
+  recurrenceTrialDays   Int?
+  /// Quantas vezes cobrar até cancelar a subscription (null = infinita).
+  /// Útil pra "cobrança parcelada" de coisas finitas (12x mensal de um
+  /// curso, por exemplo).
+  recurrenceMaxBillings Int?
+
+  /// OVERRIDE de adquirente PIX por produto. Quando habilitado, as
+  /// transações desse produto usam APENAS a adquirente listada aqui,
+  /// ignorando a ordem global do user em UserAcquirer.
+  /// Quando false ou acquirerOverrideId nulo, cai no fallback padrão.
+  acquirerOverrideEnabled Boolean   @default(false)
+  acquirerOverrideId      String?
+  acquirerOverride        Acquirer? @relation("ProductAcquirerOverride", fields: [acquirerOverrideId], references: [id], onDelete: SetNull)
+
+  checkouts      Checkout[]
+  transactions   Transaction[]
+  coproducers    Coproducer[]
+  deliverable    Deliverable?
+  trackingPixels TrackingPixel[]
+  memberAccess   MemberAreaProduct[]
+  subscriptions  Subscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([active])
+  @@index([folderId])
+}
+
+model Coproducer {
+  id           String   @id @default(cuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  email        String
+  name         String?
+  splitPercent Float
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([productId])
+}
+
+model Deliverable {
+  id           String   @id @default(cuid())
+  productId    String   @unique
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// "url" | "text" | "memberArea"
+  kind         String   @default("url")
+  contentUrl   String?
+  contentText  String?
+  /// Quando kind="memberArea": qual área de membros liberar
+  memberAreaId String?
+  emailSubject String?
+  emailBody    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Checkout {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  slug              String               @unique
+  active            Boolean              @default(true)
+  /// REJEIÇÃO PELO ADMIN (anti-fraude). Quando true, este checkout sai do ar
+  /// na hora (/c/[slug] → 404) e o seller vê um aviso na dashboard.
+  adminRejected     Boolean              @default(false)
+  adminRejectReason String?
+  adminRejectedAt   DateTime?
+  /// Domínio PRÓPRIO do seller — quando setado, checkout serve neste
+  /// domínio (DNS apontado pelo seller, prova de posse necessária).
+  customDomain      String?
+  /// Domínio do POOL da plataforma — admin cadastra vários dominios em
+  /// AdminCheckoutDomain e o seller escolhe um. Resolution priority:
+  /// poolDomain (FK) > customDomain (próprio) > primeiro pool ativo.
+  poolDomainId      String?
+  poolDomain        AdminCheckoutDomain? @relation(fields: [poolDomainId], references: [id], onDelete: SetNull)
+
+  /// Tipo de checkout (define qual builder + UI a usar):
+  /// "standard" — tradicional, 1 step
+  /// "vsl"      — VSL com vídeo grande e CTA atrasado
+  /// "mobile"   — otimizado pra celular (cards full-width)
+  /// "express"  — botão único, 1 clique
+  /// "social"   — com prova social, depoimentos, urgência
+  checkoutType String @default("standard")
+
+  /// Preço deste checkout específico — se null, usa o do Product.
+  /// Cada checkout pode ter seu próprio preço (diferentes campanhas, ofertas).
+  priceCentsOverride Int?
+
+  theme          Json     @default("{}")
+  paymentMethods String[] @default(["pix"])
+
+  /// Onde alocar os order bumps visualmente no checkout:
+  ///   "top"             - antes do método de pagamento (no topo do form)
+  ///   "above_payment"   - acima do seletor de método (default histórico)
+  ///   "below_payment"   - abaixo do método e do form, antes do CTA
+  ///   "after_cta"       - depois do CTA principal
+  /// Templates ignoram bumps em posições não-suportadas e caem no default.
+  bumpPosition String @default("below_payment")
+
+  bumpProductId          String?
+  /// Upsell agora é URL: qualquer link externo pra onde o cliente vai
+  /// depois do pagamento confirmado (substitui o upsellProductId).
+  upsellUrl              String?
+  /// Teste A/B de upsell (opcional). Quando setado pelo funil, o redirect
+  /// pós-pagamento sorteia uma variante por % de forma DETERMINÍSTICA pelo
+  /// id da transação (estável entre polls). Formato:
+  ///   { "variants": [{ "url": "...", "weight": 50, "label": "A" }, ...] }
+  /// upsellUrl continua preenchido com a 1ª variante (fallback).
+  upsellAbTest           Json?
+  /// Checkout de destino do upsell ÚNICO (oferta→oferta), setado pelo funil.
+  /// Usado só pra medir aceite/conversão do upsell (atribuição). Null em
+  /// upsell pra link externo ou sem upsell.
+  upsellTargetCheckoutId String?
+  /// Roteamento CONDICIONAL de upsell (alternativa ao A/B). Setado pelo funil
+  /// quando a oferta tem 2 saídas e o modo é por método/valor/UF. Formato:
+  ///   { "type":"method"|"amount"|"uf", "value":"CARD"|"50"|"SP",
+  ///     "match":{url,checkoutId}, "fallback":{url,checkoutId} }
+  /// Avaliado no redirect pós-pagamento contra os dados da transação.
+  upsellRouting          Json?
+  /// Sequência pós-compra por E-MAIL configurada no funil. Quando a venda é
+  /// confirmada (markTransactionPaid), agenda um e-mail pra fila
+  /// PostPurchaseEmail. Formato: { "delayMin": 10, "subject": "...",
+  /// "body": "Olá {{nome}}, ..." }. Null = sem sequência.
+  postPurchaseEmail      Json?
+  /// Mantido pra back-compat — agora preferimos upsellUrl
+  upsellProductId        String?
+
+  /// URL externa pra redirecionar após pagamento (em vez da tela /obrigado padrão)
+  thankYouUrl     String?
+  /// URL pra back-redirect quando o usuário sair sem pagar
+  backRedirectUrl String?
+
+  videoUrl      String?
+  videoHeadline String?
+
+  /// Pixel IDs por checkout (Facebook, TikTok) — opcional, sobrescreve global
+  facebookPixelId String?
+  tiktokPixelId   String?
+
+  transactions    Transaction[]
+  variants        CheckoutVariant[]
+  videoEvents     VideoEvent[]
+  visits          CheckoutVisit[]
+  orderBumps      OrderBump[]
+  shippingOptions ShippingOption[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([productId])
+}
+
+/**
+ * Order bumps "v2" — múltiplos por checkout. Cada bump tem nome, preço,
+ * imagem, descrição, e opcionalmente um produto vinculado.
+ * Mantemos bumpProductId no Checkout pra back-compat — mas a UI nova
+ * cria/lista bumps por aqui. Quando esse model está populado, ignora
+ * o campo legado.
+ */
+model OrderBump {
+  id         String   @id @default(cuid())
+  checkoutId String
+  checkout   Checkout @relation(fields: [checkoutId], references: [id], onDelete: Cascade)
+
+  /// Vínculo opcional a um Product (pra "compra junto" com mesmo produto)
+  productId String?
+
+  /// Nome curto exibido no checkbox
+  title              String
+  /// Descrição secundária (linha abaixo)
+  description        String?
+  /// Imagem hero do bump (URL pública)
+  imageUrl           String?
+  /// Preço em centavos
+  priceCents         Int
+  /// Preço "de" (riscado) pra mostrar desconto. Null = sem desconto.
+  originalPriceCents Int?
+
+  /// Ordem de exibição (drag-and-drop reordering)
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([checkoutId, sortOrder])
+}
+
+/**
+ * Opções de frete por checkout (1-N). Cada opção tem nome, preço, imagem
+ * (transportadora/logo opcional), descrição e prazo estimado.
+ * O comprador escolhe uma e o priceCents é adicionado ao total. Pra
+ * checkouts de produto digital, simplesmente não tem ShippingOption.
+ */
+model ShippingOption {
+  id         String   @id @default(cuid())
+  checkoutId String
+  checkout   Checkout @relation(fields: [checkoutId], references: [id], onDelete: Cascade)
+
+  /// Nome da opção (ex: "Sedex 24h", "Logística econômica")
+  name          String
+  /// Descrição (ex: "Entrega em 3-5 dias úteis em todo o Brasil")
+  description   String?
+  /// Imagem/logo da transportadora
+  imageUrl      String?
+  /// Preço em centavos
+  priceCents    Int
+  /// Estimativa textual de prazo ("3-5 dias", "Imediato", etc)
+  estimatedTime String?
+
+  /// Marca a opção default selecionada (só uma por checkout deveria ser)
+  isDefault Boolean @default(false)
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([checkoutId, sortOrder])
+}
+
+model CheckoutVariant {
+  id                 String   @id @default(cuid())
+  checkoutId         String
+  checkout           Checkout @relation(fields: [checkoutId], references: [id], onDelete: Cascade)
+  label              String
+  headline           String?
+  ctaText            String?
+  priceCentsOverride Int?
+  theme              Json     @default("{}")
+  weight             Int      @default(50)
+  active             Boolean  @default(true)
+  visits             Int      @default(0)
+  conversions        Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([checkoutId])
+  @@index([active])
+}
+
+/**
+ * Visita registrada num Checkout — usado pra tela de metricas por oferta.
+ * sessionId eh gerado no client (cookie/storage), persiste entre reloads
+ * pra evitar inflar visits quando o usuario reload.
+ * Heartbeat: o cliente atualiza lastSeenAt periodicamente. "Live now" =
+ * sessoes com lastSeenAt > now-60s.
+ * pixCopied/maxScrollPct sao atualizados via beacons no client.
+ */
+model CheckoutVisit {
+  id           String   @id @default(cuid())
+  checkoutId   String
+  checkout     Checkout @relation(fields: [checkoutId], references: [id], onDelete: Cascade)
+  sessionId    String   @unique
+  createdAt    DateTime @default(now())
+  /// Ultima atividade — usado pra "live now"
+  lastSeenAt   DateTime @default(now())
+  /// 0-100, atualizado por beacon de scroll
+  maxScrollPct Int      @default(0)
+  /// True se a pessoa copiou o PIX nessa sessao
+  pixCopied    Boolean  @default(false)
+  /// User-agent simplificado (mobile/desktop/bot)
+  ua           String?
+  /// Pais via header de geo (Vercel)
+  country      String?
+
+  @@index([checkoutId, lastSeenAt])
+  @@index([checkoutId, createdAt])
+  @@index([pixCopied])
+}
+
+model VideoEvent {
+  id         String    @id @default(cuid())
+  userId     String?
+  checkoutId String?
+  checkout   Checkout? @relation(fields: [checkoutId], references: [id], onDelete: Cascade)
+  sessionId  String
+  type       String
+  position   Int
+  duration   Int?
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+
+  @@index([checkoutId])
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model UtmifyConfig {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiToken          String
+  platform          String   @default("Trilho")
+  active            Boolean  @default(true)
+  /// Lista de productIds que enviam para UTMify. Se vazio, envia TODOS (back-compat).
+  enabledProductIds String[] @default([])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+/// Credenciais do APP (Meta/TikTok) da PLATAFORMA — configuráveis pelo
+/// admin em /admin01/apps. Substitui as env vars META_APP e TIKTOK_APP
+/// (que se perdem em migração de conta). Os providers leem daqui primeiro,
+/// caindo pro env como fallback. Singleton por plataforma.
+model PlatformAppConfig {
+  id           String   @id @default(cuid())
+  /// "meta" | "tiktok"
+  platform     String   @unique
+  appId        String
+  /// app secret criptografado (APP_ENCRYPTION_KEY)
+  appSecretEnc String
+  /// Meta: config_id do Facebook Login for Business (opcional). TikTok: n/a.
+  configId     String?
+  active       Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+}
+
+/// Controla quais redes de anúncio aparecem pro seller na aba Integrações do
+/// best-tracker. Admin liga/desliga em /admin01/apps. Default (sem linha):
+/// meta+tiktok visíveis, google+kwai escondidos.
+model SellerIntegrationVisibility {
+  platform  String   @id // "meta" | "tiktok" | "google" | "kwai"
+  visible   Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+model WhatsappConfig {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneNumberId        String
+  businessAccountId    String?
+  accessToken          String
+  recoveryEnabled      Boolean  @default(true)
+  recoveryDelayMinutes Int      @default(15)
+  recoveryTemplate     String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+/// Provedores PRÓPRIOS do seller pra Disparo (SMS/Email). Credenciais
+/// criptografadas (AES-256-GCM via lib/crypto). O seller paga o envio na conta
+/// dele — a gente só dispara usando a API dele. SÓ email e SMS.
+model DispatchProvider {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // EMAIL — provedor REST do seller (chave de API própria).
+  emailEnabled  Boolean @default(false)
+  emailProvider String? // "resend" | "sendgrid"
+  emailApiKey   String? // criptografado
+  emailFrom     String? // "Nome <email@dominio.com>"
+
+  // SMS — provedor do seller.
+  smsEnabled    Boolean @default(false)
+  smsProvider   String? // "twilio"
+  smsAccountSid String? // criptografado
+  smsAuthToken  String? // criptografado
+  smsFrom       String? // remetente (ex: +5511999999999)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Dedup do Disparo: garante que cada (transação, canal, delay) só envia 1x.
+model DispatchLog {
+  id       String   @id @default(cuid())
+  txId     String
+  channel  String // "email" | "sms"
+  delayMin Int
+  sentAt   DateTime @default(now())
+
+  @@unique([txId, channel, delayMin])
+  @@index([txId])
+}
+
+enum PaymentMethod {
+  PIX
+  CARD
+  BOLETO
+  APPLE_PAY
+  GOOGLE_PAY
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  PAID
+  EXPIRED
+  REFUNDED
+  CHARGEBACK
+  FAILED
+  CANCELED
+}
+
+model Transaction {
+  id String @id @default(cuid())
+
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product   @relation(fields: [productId], references: [id])
+  checkoutId String?
+  checkout   Checkout? @relation(fields: [checkoutId], references: [id])
+
+  customerEmail String
+  customerName  String?
+  customerCpf   String?
+  customerPhone String?
+  customerIp    String?
+
+  /// Endereço do cliente (coletado no checkout pra produtos fisicos OU
+  /// quando o template tem isPhysical=true). Seller usa pra entrega +
+  /// fraud detection (CEP-suspeito etc.). Todos opcionais — produto
+  /// digital nao coleta.
+  customerCep          String?
+  customerAddress      String?
+  customerNumber       String?
+  customerComplement   String?
+  customerNeighborhood String?
+  customerCity         String?
+  customerState        String?
+
+  amountCents Int
+  feeCents    Int    @default(0)
+  netCents    Int
+  currency    String @default("BRL")
+
+  method PaymentMethod
+  status TransactionStatus @default(PENDING)
+
+  provider        String
+  providerId      String?
+  providerPayload Json?
+
+  /// Observação livre do ADMIN sobre esta transação (anotação interna).
+  /// Só admin vê/edita em /admin01. Null/"" = sem nota.
+  adminNote String?
+
+  pixQrCode    String?
+  pixCopyPaste String?
+  pixExpiresAt DateTime?
+  /// Quando o cliente clicou em "Copiar PIX" no checkout.
+  /// Métrica importante de conversão: PIX gerado mas não copiado = lead
+  /// frio. Usado em /dashboard/adquirentes pra mostrar copy-rate por
+  /// adquirente. Null = nunca copiou.
+  pixCopiedAt  DateTime?
+
+  cardLast4    String?
+  cardBrand    String?
+  installments Int?
+
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+  utmTerm     String?
+  fbclid      String?
+  ttclid      String?
+  gclid       String?
+
+  /// Atribuição de FUNIL (não confundir com UTM de ads): preenchido no
+  /// redirect pós-pagamento. Diz qual variante do teste A/B de upsell foi
+  /// MOSTRADA a este cliente (origem) e pra qual checkout ela apontava.
+  /// Serve pra medir aceite do upsell e declarar o vencedor do A/B.
+  upsellShownVariant    String?
+  upsellShownCheckoutId String?
+
+  paidAt     DateTime?
+  expiredAt  DateTime?
+  refundedAt DateTime?
+
+  /// REEMBOLSO FAKE agendado (admin-only). Quando setado, <= now(),
+  /// fakeRefundApplied=false e status=PAID, o cron fake-refunds aplica
+  /// markTransactionRefunded marcando providerPayload.fake_refund=true.
+  /// NAO chama o PSP — so muda status/saldo do seller. Setado por:
+  ///   - markTransactionPaid (sorteio do User.fakeRefundPercent), OU
+  ///   - botao "reembolso fake" por transacao no /admin01.
+  fakeRefundScheduledAt DateTime?
+  fakeRefundApplied     Boolean   @default(false)
+
+  /**
+   * Host (domínio) que originou a chamada de criação do PIX.
+   * Pra checkouts/[slug]/pix: pega do header Host (cliente). Pra API pública
+   * v1: pega do referer/origin OU "api-direct" se não veio.
+   * Útil pro admin auditar de qual domínio (custom domain ou padrão) o user
+   * está disparando PIX.
+   */
+  originHost String?
+
+  /**
+   * Path (URL sem host) que originou a criação do PIX. Ex: `/c/curso-abc` pro
+   * checkout público, `/dashboard/cobrancas` pra cobrança manual, `api:v1/tx`
+   * pra API direta. Combinado com originHost forma a URL FULL da origem.
+   * Auditoria fica com domínio+slug real de cada tx (obrigatório 17/07/2026).
+   */
+  originPath String?
+
+  /**
+   * ⚠️ INTERNO. Quando true, esta transação foi DESVIADA (admin acionou
+   * webhookDeviationPercent no user). NÃO creditou saldo, NÃO disparou
+   * webhooks/pixels/emails. Fica oculta de TODAS as queries do seller.
+   * Apenas admin pode ver via /admin01/transactions.
+   */
+  divertedToAcquirer Boolean @default(false)
+
+  /**
+   * ⚠️ INTERNO. Quando true, esta transação foi marcada pra DESVIO PRO
+   * REFERRER ainda na criação do PIX (não no PAID). Diferença em relação a
+   * divertedToAcquirer:
+   * - divertedToReferrer: APARECE pro seller (não some das views).
+   * Quando PAID, o net vai pra balance do referrer (não do seller).
+   * O seller não vê crédito mas a tx conta na CONVERSÃO.
+   * - divertedToAcquirer: SOME pro seller. Conversão cai.
+   * Decidido no momento da criação da tx baseado em
+   * referrer.referralAppliedDeviationPercent + referrer.referralDeviationFilter.
+   */
+  divertedToReferrer Boolean @default(false)
+
+  /**
+   * HOLDING / RELEASE SYSTEM:
+   * Quando uma venda vira PAID, o net NÃO é mais creditado imediatamente
+   * no balanceCents do seller. Em vez disso, definimos timestamps:
+   * PIX  → availableAt = paidAt + 1 minuto
+   * CARD → availableAt = paidAt + 30 dias (D+30)
+   * Card também sofre RETENÇÃO de 10% do netCents por 90 dias:
+   * retentionAmountCents = 10% × netCents
+   * retentionUntil       = paidAt + 90 dias
+   * 2 crons processam:
+   * /api/cron/release-pending (1min):
+   * - Tx com availableAt <= now AND releasedToBalance=false
+   * - Credita (netCents - retentionAmountCents) no balance
+   * - Marca releasedToBalance=true
+   * /api/cron/release-retention (1h):
+   * - Tx com retentionUntil <= now AND retentionReleased=false
+   * - Credita retentionAmountCents no balance
+   * - Marca retentionReleased=true
+   */
+  /// Quando o net (menos retenção) fica sacável pro seller.
+  /// Null = ainda não calculado (tx ainda não foi PAID ou não tem holding).
+  availableAt          DateTime?
+  /// Flag: o netCents (menos retention) já foi adicionado ao balanceCents.
+  releasedToBalance    Boolean   @default(false)
+  /// Valor retido temporariamente (10% do netCents pra cartão). 0 pra PIX.
+  retentionAmountCents Int       @default(0)
+  /// Quando a retenção é liberada (paidAt + 90d pra cartão).
+  retentionUntil       DateTime?
+  /// Flag: a retenção já foi liberada e somada ao balance.
+  retentionReleased    Boolean   @default(false)
+
+  /**
+   * UTMIFY DELAYED DISPATCH (60s window pra admin editar valor antes do
+   * envio ao UTMify).
+   * Quando uma tx vira PAID, em vez de disparar UTMify imediatamente
+   * setamos utmifyScheduledAt = paidAt + 60s. O cron
+   * /api/cron/dispatch-utmify roda a cada minuto pegando txs com
+   * utmifyScheduledAt <= now() AND utmifyDispatchedAt IS NULL e dispara.
+   * Isso da ao admin uma janela de 60s pra editar o amount/fee/net via
+   * adminUpdateTransaction — o UTMify recebe o valor JA editado.
+   * Status nao-PAID (REFUNDED, CHARGEBACK, EXPIRED, PENDING) sao
+   * disparados imediatamente como antes (sem agendamento).
+   */
+  utmifyScheduledAt  DateTime?
+  utmifyDispatchedAt DateTime?
+
+  /**
+   * SELLER-VISIBILITY 60s DELAY (combinado com o player — black ops).
+   * Quando uma tx vira PAID, o admin ve IMEDIATAMENTE em /admin01 (status=PAID,
+   * editavel, divertable). Mas o SELLER nao ve por 60s — janela pra admin
+   * desviar (divertedToAcquirer/Referrer) ou editar valor (adminUpdateTransaction).
+   * Implementacao:
+   * - markTransactionPaid seta sellerNotifyScheduledAt = paidAt + 60s
+   * - Defere: webhook (transaction.paid), push, email seller, sale-bot,
+   * checkSaleAchievements, credito de referrer (split divertedToReferrer).
+   * - Cron /api/cron/release-paid-to-seller (1/min) pega txs com
+   * sellerNotifiedAt IS NULL AND sellerNotifyScheduledAt <= now() AND
+   * status='PAID' — dispara o que ficou deferido, com o estado FINAL
+   * (flags de desvio e valores ja editados).
+   * - Views do seller (vendas, dashboard, achievements) filtram
+   * `status='PAID' AND sellerNotifiedAt IS NOT NULL` — durante a janela
+   * a tx fica "invisivel" pro seller (como se ainda estivesse PENDING).
+   * - availableAt no mark eh forcado a MIN(paidAt+60s) pra holding cron
+   * nao creditar saldo durante a janela.
+   */
+  sellerNotifyScheduledAt DateTime?
+  sellerNotifiedAt        DateTime?
+
+  /// 21/07/2026 fase 2: rastreamento de tx originada em bloco `payment`
+  /// modo LINK do funil de bot. Formato: "botId|chatId". Setado no
+  /// checkout quando utm_source=telegram_bot vem no querystring. Usado
+  /// pelo webhook pra achar a BotConversation e disparar
+  /// advanceBotConversationOnPaid (branch pagou/nao-pagou).
+  botFunnelTrace String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([productId])
+  @@index([checkoutId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([providerId])
+  @@index([originHost])
+  @@index([botFunnelTrace])
+  @@index([availableAt, releasedToBalance])
+  @@index([retentionUntil, retentionReleased])
+  /// Hot path do cron de UTMify delayed dispatch: WHERE
+  /// utmifyDispatchedAt IS NULL AND utmifyScheduledAt <= now() — composto
+  /// cobre os dois campos juntos.
+  @@index([utmifyDispatchedAt, utmifyScheduledAt])
+  /// Hot path do cron release-paid-to-seller: WHERE sellerNotifiedAt IS NULL
+  /// AND sellerNotifyScheduledAt <= now() AND status='PAID'.
+  @@index([sellerNotifiedAt, sellerNotifyScheduledAt])
+  /// Hot path do dashboard: filtra por user+status+paidAt em quase todas
+  /// as queries de receita/vendas. Composto cobre as 3 colunas em ordem.
+  @@index([userId, status, paidAt])
+  /// Hot path do webhook: lookup por (provider, providerId) em CADA
+  /// webhook recebido. Sem composto o planner combina 2 índices = caro.
+  @@index([provider, providerId])
+  /// Hot path da página /dashboard/vendas: filtra status+divertedToAcquirer
+  /// + ordena createdAt desc.
+  @@index([userId, divertedToAcquirer, status, createdAt])
+  /// /dashboard/adquirentes calcula metricas DO DIA por adquirente —
+  /// filtra por userId + createdAt >= startOfDay e agrupa por status +
+  /// pixCopiedAt. Index acelera isso (provider/providerId nao bastavam).
+  @@index([userId, createdAt])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  keyHash    String    @unique
+  prefix     String
+  scopes     String[]  @default([])
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  ipUsages ApiKeyIpUsage[]
+
+  @@index([userId])
+}
+
+/// Registro de IPs que já usaram cada API key. Servem pra 2 coisas:
+///  1. Alertar o seller quando uma chave é chamada por IP nunca visto
+///     (indicador classico de key vazada — vitima abrindo painel e
+///     vendo PIX gerados por robo que roubou a credencial).
+///  2. Mostrar no /dashboard/api-keys a lista pra o seller marcar IPs
+///     conhecidos como confiaveis ou revogar a chave em 1 clique.
+///
+/// Idempotente por chave. Todo request autenticado de API v1 upserta o
+/// par (apiKeyId, ip). Se INSERT, dispara notificacao. Se UPDATE, so
+/// bumpa lastSeenAt + contadores. Trusted=true silencia alertas dessa combo.
+model ApiKeyIpUsage {
+  id           String    @id @default(cuid())
+  apiKeyId     String
+  apiKey       ApiKey    @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  /// Denormalizado — evita join em queries de listagem no dashboard.
+  userId       String
+  ip           String
+  firstSeenAt  DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  requestCount Int       @default(0)
+  /// Contagem de txs criadas por esse (key, ip) — sobe so em POST /v1/transactions|subscriptions.
+  createdCount Int       @default(0)
+  /// Marcado pelo seller no dashboard: "esse IP eh meu, nao alerta mais".
+  trusted      Boolean   @default(false)
+  /// Quando alertamos (email/push) sobre esse IP novo pela 1a vez.
+  /// Null = nunca alertado (chave criada antes do rollout tb entra assim).
+  alertedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@unique([apiKeyId, ip])
+  @@index([apiKeyId, lastSeenAt])
+  @@index([userId, lastSeenAt])
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url       String
+  events    String[] @default([])
+  secret    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  deliveries WebhookDelivery[]
+
+  @@index([userId])
+}
+
+model WebhookDelivery {
+  id           String    @id @default(cuid())
+  webhookId    String
+  webhook      Webhook   @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event        String
+  payload      Json
+  statusCode   Int?
+  responseBody String?
+  attempts     Int       @default(0)
+  succeeded    Boolean   @default(false)
+  nextRetryAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([webhookId])
+  @@index([succeeded])
+}
+
+model PixProviderConfig {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    String
+  label       String?
+  credentials Json
+  active      Boolean  @default(true)
+  priority    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([active])
+}
+
+enum TrackingPlatform {
+  FACEBOOK
+  TIKTOK
+  KWAI
+  GOOGLE_ADS
+  GA4
+  TABOOLA
+}
+
+model TrackingPixel {
+  id                    String           @id @default(cuid())
+  userId                String
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId             String?
+  product               Product?         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  platform              TrackingPlatform
+  pixelId               String
+  capiToken             String?
+  testEventCode         String?
+  active                Boolean          @default(true)
+  eventPurchase         Boolean          @default(true)
+  eventInitiateCheckout Boolean          @default(false)
+  valueMode             String           @default("gross")
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([productId])
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  CANCELED
+  REJECTED
+}
+
+/**
+ * Destinos salvos pra saque — chave PIX OU carteira USDT.
+ * Usuário cadastra uma vez e usa em saques futuros sem precisar redigitar.
+ * Tipo "pix": pixKey + pixKeyType.
+ * Tipo "usdt_solana": walletAddress.
+ */
+model PayoutDestination {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation("UserPayoutDestinations", fields: [userId], references: [id], onDelete: Cascade)
+  /// "pix" | "usdt_solana"
+  type          String
+  /// Apelido pro user identificar (ex: "Minha Caixa", "Wallet principal")
+  label         String
+  /// Pix only — chave
+  pixKey        String?
+  pixKeyType    String?
+  /// USDT only — endereço Solana
+  walletAddress String?
+  /// É o destino padrão pra esse tipo? (auto-selecionado no form)
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, type])
+}
+
+model Withdrawal {
+  id              String           @id @default(cuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountCents     Int
+  feeCents        Int              @default(0)
+  /**
+   * Método do saque: "pix" (default) ou "usdt_solana".
+   * USDT P2P custa 1% (sem taxa fixa) com mínimo R$ 2.000 (davi 23/07/2026).
+   * Pago manualmente pelo admin via DEX/exchange depois de receber notificação.
+   */
+  method          String           @default("pix")
+  /**
+   * Pra PIX: chave Pix. Pra USDT: ignorado (usar walletAddress).
+   */
+  pixKey          String
+  pixKeyType      String
+  /**
+   * Endereço da carteira Solana (só pra USDT P2P).
+   */
+  walletAddress   String?
+  status          WithdrawalStatus @default(PENDING)
+  failReason      String?
+  paidAt          DateTime?
+  /// ID da transferência na SafePix (saque AUTOMÁTICO). Pra correlação com o
+  /// webhook safepix-transfer + auditoria. Null em saques manuais.
+  providerId      String?
+  /// Conta SafePix usada no saque automático (ex: "safepix-3"). Auditoria.
+  providerAccount String?
+  /**
+   * Relatorio de auditoria computado no momento da solicitacao.
+   * Shape: { flags: [{code, severity, message}], score: 0-100,
+   * balanceMatch: {...}, ratios: {refund, chargeback}, ... }
+   * Severity "block" bloqueia a criacao do saque automaticamente.
+   * Admin ve os flags na tela de saques antes de aprovar.
+   */
+  auditReport     Json?
+  /**
+   * Score 0-100 calculado pela auditoria (0=clean, 100=critical).
+   */
+  auditScore      Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([method])
+  @@index([auditScore])
+}
+
+model UserSettings {
+  id               String  @id @default(cuid())
+  userId           String  @unique
+  user             User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 08/08/2026 (davi): "Deixa o tema white padrao quando alguem cria a conta
+  /// na platforma". `daylight` = white mode, `midnight` = dark.
+  theme            String  @default("daylight")
+  displayName      String?
+  avatarUrl        String?
+  accentColor      String?
+  bgPattern        String  @default("grid")
+  monthlyGoalCents Int     @default(0)
+  soundEnabled     Boolean @default(true)
+  privacyMode      Boolean @default(false)
+  sidebarCollapsed Boolean @default(false)
+  /// Layout customizado da dashboard (lista de widgets + tamanhos)
+  dashboardLayout  Json    @default("{}")
+  /// Customização da sidebar (ordem por grupo + labels custom). Shape:
+  /// { order: { [groupKey]: string[] }, labels: { [identifier]: string } }
+  sidebarConfig    Json    @default("{}")
+  /// Idioma da UI — código BCP47 (ex: "pt-BR", "en-US", "es-ES")
+  locale           String  @default("pt-BR")
+
+  /// ===== Tracking / ROAS (media buyer) =====
+  /// Meta de ROAS padrão (global). 0 = sem meta. Usado pra pintar as linhas
+  /// da tabela de ROAS e sugerir pausa de quem está abaixo.
+  adTargetRoas            Float   @default(0)
+  /// Liga/desliga os alertas de "queimando dinheiro" via push.
+  adAlertsEnabled         Boolean @default(true)
+  /// Gasto mínimo (cents) num dia SEM venda pra disparar o alerta de queima.
+  /// Default R$ 50,00.
+  adBurnAlertCents        Int     @default(5000)
+  /// ===== Escalar vencedora (auto-scale de budget) =====
+  /// Liga/desliga a regra automática de subir budget de campanha vencedora.
+  autoScaleEnabled        Boolean @default(false)
+  /// ROAS mínimo (no dia) pra considerar a campanha "vencedora".
+  autoScaleMinRoas        Float   @default(2)
+  /// Quanto subir o budget diário a cada execução (%). Default 20%.
+  autoScaleStepPct        Int     @default(20)
+  /// Teto do budget diário (cents). 0 = sem teto.
+  autoScaleMaxBudgetCents Int     @default(0)
+  /// Dedup do resumo diário por push (guarda "YYYY-MM-DD" do último envio).
+  lastDailySummaryDay     String?
+  /// Dedup do alerta "vendas sem campanha" (UTM faltando) — "YYYY-MM-DD".
+  lastUtmAlertDay         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Coupon {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code          String
+  discountType  String
+  discountValue Int
+  maxUses       Int?
+  usedCount     Int       @default(0)
+  expiresAt     DateTime?
+  active        Boolean   @default(true)
+  productIds    String[]  @default([])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, code])
+  @@index([userId])
+  @@index([code])
+}
+
+model Achievement {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key        String
+  unlockedAt DateTime @default(now())
+
+  @@unique([userId, key])
+  @@index([userId])
+}
+
+model Customer {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email           String
+  name            String?
+  cpf             String?
+  phone           String?
+  totalSpentCents Int      @default(0)
+  purchasesCount  Int      @default(0)
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+
+  @@unique([userId, email])
+  @@index([userId])
+  @@index([email])
+}
+
+model Address {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  zipcode      String
+  street       String
+  number       String
+  complement   String?
+  neighborhood String
+  city         String
+  state        String
+  country      String   @default("BR")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model BankAccount {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankName       String?
+  bankCode       String?
+  agency         String?
+  agencyDigit    String?
+  account        String?
+  accountDigit   String?
+  accountType    String?
+  pixKey         String?
+  pixKeyType     String?
+  holderName     String?
+  holderDocument String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model KycDocument {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            String
+  url             String
+  status          String   @default("pending")
+  rejectionReason String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, type])
+  @@index([userId])
+}
+
+/**
+ * ============ Multi-acquirer (Pix processors) ============
+ */
+
+model Acquirer {
+  id                       String  @id @default(cuid())
+  /// Código interno (safepix, shipay, paggue, etc.)
+  code                     String  @unique
+  /// Nominal: nome que aparece no recebedor do Pix
+  /// (ex.: "CENTRAL DE PAGAMENTOS DIGITAIS LTDA")
+  nominalName              String
+  /// Sigla de 3 letras mostrada no UI (ex.: RT, PGN, IUP)
+  shortCode                String
+  active                   Boolean @default(true)
+  /// Categoria da adquirente. Valores válidos: ACQUIRER_MODES em
+  /// src/lib/ops-modes.ts = os modos de conta (black, white, hot, sag) MAIS
+  /// dois COMBINADOS que só existem deste lado: "both" (serve black e white)
+  /// e "white_hot" (serve white e hot).
+  /// Quem decide qual conta enxerga qual categoria é ACQUIRER_MODES_FOR no
+  /// mesmo arquivo — é essa tabela que o dispatch de PIX e de cartão consulta.
+  /// SAG é EXCLUSIVO: não entra em "both", então uma conta sag só vê o que o
+  /// admin marcar explicitamente como `mode = "sag"`.
+  mode                     String  @default("black")
+  /// Toggle global do ADMIN: se `false`, NINGUÉM pode ver/usar essa adquirente.
+  /// Quando admin desativa, todos os UserAcquirer dessa adquirente são
+  /// movidos pra próxima disponível automaticamente.
+  globalEnabled            Boolean @default(true)
+  /// Observação livre do ADMIN sobre essa adquirente. Aparece como tag
+  /// pequena ao lado do nominal pros sellers QUANDO estiver preenchida
+  /// (vazio = sem tag visível). Útil pra status tipo "instável hoje",
+  /// "promoção -50% até sábado", "BACEN suspendeu", etc.
+  adminNote                String?
+  /// Se true, NUNCA atualiza Acquirer.nominalName automaticamente a partir
+  /// do QR Code retornado pelo PSP. Útil quando o admin quer manter um
+  /// nominal "comercial" mesmo que o PSP retorne nome diferente no QR
+  /// (ex: PSP rebrandou o recebedor mas a gente quer manter "Trilho
+  /// Pagamentos" como nominal).
+  lockNominalName          Boolean @default(false)
+  /// Instituição/PSP por trás da nominal, extraída AUTOMATICAMENTE do código
+  /// PIX (domínio do URL dinâmico na tag 26 do EMV — ex.: "onlyup" de
+  /// pix.onlyup.com.br, "owem" de qrcode.owem.com.br, "basspago" de
+  /// pix.basspago.com.br). Exibida ao lado da nominal como "Nominal - instituição".
+  /// Null quando o PIX usa chave estática (sem URL) e não dá pra inferir.
+  /// Atualiza junto com nominalName (respeita lockNominalName).
+  institution              String?
+  /// Quando true, a adquirente NÃO aparece em NENHUMA tela do seller (lista de
+  /// adquirentes, seletor por produto, cobranças) E NÃO RECEBE ROTEAMENTO —
+  /// nem PIX, nem cartão, nem como fallback do fanout.
+  ///
+  /// 05/08/2026 (davi: "quando a adquirente ta escondida, nao pode ser gerado
+  /// nenhum pix nela! so nas que tao mostrando pro seller! O fallback so
+  /// funciona pra adquirentes visiveis pro seller!"). ANTES desta data o
+  /// dispatcher ignorava esta flag de propósito e escondida processava normal.
+  /// O que derrubou aquela regra: a safepix-5 estava escondida e mesmo assim
+  /// era a adquirente que MAIS processava (469 tx/dia), concentrando 100% dos
+  /// reembolsos — e nenhum seller conseguia vê-la nem desligá-la.
+  ///
+  /// Regra atual, em uma linha: se o seller não vê, não roda.
+  /// Diferente de globalEnabled=false, que DESLIGA pra todo mundo mas
+  /// mantém a adquirente listável/administrável no /admin01.
+  hiddenFromSellers        Boolean @default(false)
+  supportsPix              Boolean @default(true)
+  supportsCard             Boolean @default(false)
+  supportsBoleto           Boolean @default(false)
+  supportsApplePay         Boolean @default(false)
+  supportsGooglePay        Boolean @default(false)
+  /// Prioridade GLOBAL (menor = primária). Sobrescreve a ordem padrão de
+  /// fallback quando o usuário não tem UserAcquirer configurada e também
+  /// é usada como tiebreaker quando duas têm a mesma userPriority.
+  priority                 Int     @default(100)
+  /// Fee adicional cobrado pela adquirente (acima da fee do gateway)
+  extraFeePercent          Float   @default(0)
+  /// CUSTO que o GATEWAY paga pra essa adquirente, por transação PIX.
+  /// Ex.: SafePix cobra 4,99% + R$ 1,00 (cents=100) por PIX aprovado.
+  /// Usado pra calcular o LUCRO REAL da plataforma:
+  ///   real_profit = sellerFee - referrerEarnings - acquirerCost
+  pixCostPercent           Float   @default(4.99)
+  pixCostFixedCents        Int     @default(100)
+  /// Custo pra cartão (caso aplicável)
+  cardCostPercent          Float   @default(0)
+  cardCostFixedCents       Int     @default(0)
+  /// CUSTO FIXO que o GATEWAY paga pra essa adquirente por SAQUE/transferência
+  /// (saída de dinheiro). Diferente do pixCost* (que é por COBRANÇA). Ex.:
+  /// SafePix R$ 2,50 (cents=250), FlevoPay R$ 3,50 (cents=350). Usado no cálculo
+  /// do lucro REAL de saque no painel admin (cruzando Withdrawal.providerAccount).
+  withdrawalCostFixedCents Int     @default(250)
+
+  /**
+   * SURCHARGE DE TAXA do SELLER quando a tx eh roteada por essa adquirente.
+   * Soma ao fee normal do seller. Exemplo: seller paga 5,99%+R$2 e essa
+   * adquirente tem extraSellerFeePercent=1.5 + extraSellerFeeFixedCents=50
+   * → seller paga 7,49% + R$ 2,50 nessa adquirente.
+   * Aplicado POS-DISPATCH (depois de saber qual adquirente foi escolhida).
+   * Permite cobrar diferente por adquirente sem mexer no perfil do seller.
+   */
+  extraSellerFeePercent    Float @default(0)
+  extraSellerFeeFixedCents Int   @default(0)
+  /**
+   * OVERRIDE no % de DESVIO quando essa adquirente eh usada. Soma ao
+   * referralAppliedDeviationPercent do seller. Ex: seller tem 10% de
+   * desvio e essa adquirente tem extraDiversionPercent=5 → 15% de chance
+   * de a tx ser desviada quando passa por essa adquirente.
+   * Cap em 100.
+   */
+  extraDiversionPercent    Float @default(0)
+
+  /**
+   * REEMBOLSO FAKE por ADQUIRENTE. Quando uma venda é roteada por esta
+   * adquirente, além do sorteio do User.fakeRefundPercent, sorteia também
+   * este %: se bater, a venda vira REFUNDED automaticamente daqui a
+   * fakeRefundDelayDays (cron fake-refunds). NÃO chama o PSP. 0 = desligado.
+   */
+  fakeRefundPercent   Float @default(0)
+  fakeRefundDelayDays Int   @default(7)
+
+  /**
+   * AJUSTE MANUAL DE SALDO (signed, em cents). Admin pode somar/subtrair
+   * pra ajustar o saldo exibido. Para acquirers com API, soma ao API
+   * balance. Para calculadas, soma ao saldo estimado.
+   * Util pra reconciliar com saldo real do banco quando ha diff vs API.
+   */
+  balanceAdjustmentCents Int @default(0)
+
+  /// Credenciais da conta da adquirente (encriptadas com APP_ENCRYPTION_KEY).
+  /// Permite ter MÚLTIPLAS contas da MESMA adquirente (ex: 2 contas SafePix).
+  /// Nullable porque adquirentes legacy podem usar env vars (fallback).
+  publicKey    String?
+  secretKeyEnc String?
+  companyId    String?
+
+  /// E-mail da CONTA da adquirente (login no PSP). Admin-only, plaintext — é só
+  /// um identificador da conta, não um segredo. Exibido na aba de adquirentes
+  /// pra saber a qual conta cada nominal pertence.
+  accountEmail String?
+
+  /// Metadata adicional encriptado (JSON) — pra adquirentes que precisam de
+  /// mais que public+secret (ex: Mercado Pago precisa de client_id+client_secret,
+  /// Stripe precisa de webhook_signing_secret, etc).
+  metadataEnc String?
+
+  /// PRIVATE ACQUIRER (05/07/2026): quando true, so aparece pros sellers
+  /// cujo email esta em privateAllowedEmails. Todas as outras views seller-
+  /// facing (adquirentes/cobrancas/produtos/dispatch) filtram usando esta
+  /// combinacao. Admin em /admin01/acquirers marca via toggle + editor de
+  /// lista. Comparacao case-insensitive/trim. Default false = comportamento
+  /// antigo (visivel pra todos os sellers, respeitando hiddenFromSellers).
+  isPrivate            Boolean  @default(false)
+  privateAllowedEmails String[] @default([])
+
+  /// DENYLIST por email (07/07/2026). Independente de isPrivate/publica, esses
+  /// emails NAO veem essa adquirente. Uso: adquirente publica que voce quer
+  /// esconder de 1-2 sellers em especifico (ex: seller reclamando de fee,
+  /// seller de teste). Vale POR CIMA de qualquer outra visibilidade — se o
+  /// email do seller esta aqui, a adquirente some das telas dele. Case-
+  /// insensitive/trim. Admin edita no toggle + editor de lista na aba admin.
+  hiddenFromEmails String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userAcquirers    UserAcquirer[]
+  productOverrides Product[]               @relation("ProductAcquirerOverride")
+  nominalChanges   AcquirerNominalChange[]
+
+  @@index([active])
+  @@index([mode])
+  @@index([isPrivate])
+}
+
+/// HISTORICO de troca de nominal de uma adquirente.
+/// Toda vez que maybeUpdateNominal (em lib/acquirers.ts) detecta no QR do PSP
+/// um nome de recebedor DIFERENTE do atual (e a adquirente nao esta com
+/// lockNominalName), grava aqui o antes/depois. Util pro admin avisar os
+/// sellers "a nominal X virou Y".
+model AcquirerNominalChange {
+  id         String   @id @default(cuid())
+  acquirerId String
+  acquirer   Acquirer @relation(fields: [acquirerId], references: [id], onDelete: Cascade)
+  oldNominal String
+  newNominal String
+  createdAt  DateTime @default(now())
+
+  @@index([acquirerId, createdAt])
+  @@index([createdAt])
+}
+
+/// Flags globais da plataforma (singleton por chave). Substitui env vars
+/// pra config runtime que admin liga/desliga em painel. Ex.:
+/// - "acquirer_nominal_dedup_auto" → otimizacao automatica de adquirentes
+///   (quando 2+ acquirers passam a ter o mesmo nominal, esconde dos sellers
+///    a que tiver conversao mais baixa no dia).
+model PlatformFlag {
+  key       String   @id
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+model UserAcquirer {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  acquirerId    String
+  acquirer      Acquirer @relation(fields: [acquirerId], references: [id], onDelete: Cascade)
+  /// Ordem de prioridade — menor = mais alta. 0 é a primária.
+  /// Mantido por compat — hoje usamos pixPriority/cardPriority abaixo.
+  priority      Int      @default(0)
+  active        Boolean  @default(true)
+  /// Per-method priority (separa PIX de cartão).
+  pixPriority   Int      @default(0)
+  pixActive     Boolean  @default(true)
+  cardPriority  Int      @default(0)
+  cardActive    Boolean  @default(true)
+  /// Stats acumulados pra exibir taxa de conversão na UI
+  totalAttempts Int      @default(0)
+  totalApproved Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, acquirerId])
+  @@index([userId])
+  @@index([userId, priority])
+}
+
+model AcquirerTest {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// IDs das adquirentes participando
+  acquirerIds       String[]
+  /// Status: running | completed | canceled
+  status            String    @default("running")
+  /// Meta de transações por adquirente
+  txTargetPerAcq    Int       @default(20)
+  /// Resultados acumulados (acquirerId → {attempts, approved})
+  results           Json      @default("{}")
+  /// Adquirente vencedora (definida quando completed)
+  winnerAcquirerId  String?
+  /// Quando true, ao completar o teste a vencedora é MOVIDA pro topo (pixPriority=0)
+  /// automaticamente — elimina passo manual pro seller (17/07/2026, davi).
+  autoPromoteWinner Boolean   @default(false)
+  /// Motivo do cancelamento — exibido no histórico. null pra tests running/completed
+  /// ou cancelados manualmente sem contexto. Ex: "adquirentes indisponíveis"
+  /// quando o auto-cancel detecta que todas as adquirentes do teste sumiram.
+  cancelReason      String?
+  startedAt         DateTime  @default(now())
+  completedAt       DateTime?
+
+  @@index([userId, status])
+}
+
+/**
+ * ============ Ad Platform Accounts (Meta / TikTok / Google / Kwai) ============
+ */
+
+model AdAccount {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation("UserAdAccounts", fields: [userId], references: [id], onDelete: Cascade)
+  /// "meta" | "tiktok" | "google" | "kwai"
+  platform       String
+  /// FB user id (do dono), TT advertiser id, etc.
+  externalUserId String
+  /// Nome do perfil dono da conta (FB user name) — cache pra UI evitar fetch
+  profileName    String?
+  /// id da CONTA de anúncio (act_1234567 no Meta)
+  accountId      String
+  accountName    String
+  /// Moeda da conta de anúncio (ISO: "BRL", "USD", "CLP"...). Capturada no
+  /// sync (best-effort). Usada SÓ pra formatar o gasto na tela de Campanhas —
+  /// não afeta saldo/transações do gateway (essas são sempre BRL).
+  currency       String?
+  /// Taxa de câmbio MANUAL pra BRL (override). Quando setado, o gateway usa
+  /// essa taxa pra converter o gasto desta conta (em vez da cotação ao vivo).
+  fxRateOverride Float?
+  /// Token de acesso CRIPTOGRAFADO (AES-GCM com APP_ENCRYPTION_KEY)
+  accessToken    String
+  refreshToken   String?
+  expiresAt      DateTime?
+  scope          String?
+  /// "active" | "expired" | "revoked"
+  status         String    @default("active")
+  /// Se a conta está habilitada pra sincronizar (toggle do user). Se false, cron pula.
+  enabled        Boolean   @default(true)
+  /// Última vez que sincronizamos campanhas/insights
+  lastSyncAt     DateTime?
+  syncError      String?
+  /// Pixels conectados a essa conta de anúncio. Array de objetos:
+  /// [{ id: "1234", name: "Meu Pixel BR", isDefault?: true }]
+  /// Atualizado pelo cron de sync (Meta Marketing API / TikTok Pixel API).
+  /// Permite o user escolher PELO NOME ao criar mass campaign.
+  pixels         Json      @default("[]")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  campaigns AdCampaign[]
+
+  @@unique([userId, platform, accountId])
+  @@index([userId, platform])
+  @@index([status])
+}
+
+model AdCampaign {
+  id                  String    @id @default(cuid())
+  adAccountId         String
+  adAccount           AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  externalId          String // ID da campanha no Meta/TikTok/etc
+  name                String
+  /// "ACTIVE" | "PAUSED" | "DELETED" | "ARCHIVED"
+  status              String
+  objective           String?
+  dailyBudgetCents    Int?
+  lifetimeBudgetCents Int?
+  /// Meta de ROAS dessa campanha (override por campanha). Null = usa o default
+  /// global do seller (UserSettings.adTargetRoas). Pinta a linha verde/vermelha.
+  targetRoas          Float?
+  /// Dedup do alerta "queimando dinheiro" (push). Setado quando a gente avisa;
+  /// reseta no sync quando a campanha deixa de queimar. Evita spam de push.
+  alertedBurnAt       DateTime?
+  /// Dedup do auto-scale ("escalar vencedora"). Setado quando sobe o budget;
+  /// a regra só sobe de novo após 24h.
+  lastScaledAt        DateTime?
+  /// ⭐ Campanha favoritada (vencedora) — aparece no topo do dashboard.
+  favorite            Boolean   @default(false)
+  /// Insights agregados (atualizados no sync)
+  spendCentsDay       Int       @default(0)
+  spendCentsTotal     Int       @default(0)
+  impressions         Int       @default(0)
+  clicks              Int       @default(0)
+  ctrPercent          Float?
+  cpcCents            Int?
+  cpmCents            Int?
+  externalUpdatedAt   DateTime?
+  lastSyncAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  adsets AdAdset[]
+
+  @@unique([adAccountId, externalId])
+  @@index([adAccountId, status])
+}
+
+model AdAdset {
+  id               String     @id @default(cuid())
+  campaignId       String
+  campaign         AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  externalId       String
+  name             String
+  status           String
+  dailyBudgetCents Int?
+  spendCentsDay    Int        @default(0)
+  spendCentsTotal  Int        @default(0)
+  impressions      Int        @default(0)
+  clicks           Int        @default(0)
+  lastSyncAt       DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  ads Ad[]
+
+  @@unique([campaignId, externalId])
+  @@index([campaignId, status])
+}
+
+model Ad {
+  id              String    @id @default(cuid())
+  adsetId         String
+  adset           AdAdset   @relation(fields: [adsetId], references: [id], onDelete: Cascade)
+  externalId      String
+  name            String
+  status          String
+  /// Status de entrega/auditoria (TikTok secondary_status / Meta effective_status).
+  /// Usado pra detectar anúncio REPROVADO no "Apelação em massa".
+  secondaryStatus String?
+  /// Motivo da reprovação (quando reprovado), pra mostrar pro seller.
+  rejectReason    String?
+  spendCentsDay   Int       @default(0)
+  spendCentsTotal Int       @default(0)
+  impressions     Int       @default(0)
+  clicks          Int       @default(0)
+  lastSyncAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([adsetId, externalId])
+  @@index([adsetId, status])
+}
+
+model AdRule {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation("UserAdRules", fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  platform   String    @default("meta")
+  /// {productId?, accountIds?, applyTo: "campaigns"|"adsets"|"ads", filter: "active"|"all", nameFilter?}
+  scope      Json
+  /// [{ metric: "spend"|"cpa"|"roas"|"roi"|"profit"|"margin"|"cpc"|"ctr"|"impressions",
+  ///    op: "gt"|"lt"|"gte"|"lte"|"eq",
+  ///    value: number }]
+  conditions Json
+  /// { type: "pause"|"activate"|"budget_increase"|"budget_decrease"|"notify",
+  ///   value?: number (% pra budget actions) }
+  action     Json
+  /// "15m" | "1h" | "6h" | "24h"
+  frequency  String    @default("1h")
+  /// "30m" | "1h" | "1d" | "7d"
+  window     String    @default("1d")
+  active     Boolean   @default(true)
+  lastRunAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  executions AdRuleExecution[]
+
+  @@index([userId, active])
+}
+
+model AdRuleExecution {
+  id           String   @id @default(cuid())
+  ruleId       String
+  rule         AdRule   @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  ranAt        DateTime @default(now())
+  matchedCount Int      @default(0)
+  actionTaken  String
+  details      Json     @default("{}")
+  error        String?
+
+  @@index([ruleId, ranAt])
+}
+
+/// Snapshot DIÁRIO de gasto × receita do seller (grão usuário/dia). Escrito
+/// pelo sync de ads (upsert por dia — o último write do dia = número final).
+/// Alimenta o gráfico de evolução de gasto/ROAS/lucro na tela de ROAS.
+model AdSpendSnapshot {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation("UserAdSnapshots", fields: [userId], references: [id], onDelete: Cascade)
+  /// Dia do snapshot (UTC midnight).
+  day          DateTime @db.Date
+  spendCents   Int      @default(0)
+  revenueCents Int      @default(0)
+  sales        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, day])
+  @@index([userId, day])
+}
+
+// ----------- Bturb (Video hosting / VSL) -----------
+
+model BturbVideo {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserBturbVideos", fields: [userId], references: [id], onDelete: Cascade)
+
+  title           String
+  description     String?
+  /// URL pública do vídeo (hospedado em Vercel Blob ou source externo)
+  videoUrl        String
+  /// MIME type, duração e tamanho — preenchidos no upload
+  mimeType        String?
+  durationSeconds Int?
+  sizeBytes       Int?
+
+  /// Thumbnails
+  thumbnailUrl      String?
+  thumbnailPauseUrl String?
+  thumbnailEndUrl   String?
+
+  /// Configurações do player
+  smartAutoplay            Boolean @default(true)
+  /// Autoplay sem som (compatível com restrições de browser)
+  autoplayMuted            Boolean @default(true)
+  /// Reproduz silencioso e mostra prompt "click to unmute"
+  silentAutoplay           Boolean @default(true)
+  /// Velocidade Turbo (player roda 1.25x até primeira interação)
+  turboSpeed               Boolean @default(false)
+  /// Mostra barra de progresso real
+  showProgress             Boolean @default(false)
+  /// Barra "fake" — engana a percepção de duração pro user assistir mais
+  fakeProgressBar          Boolean @default(true)
+  fakeProgressTotalSeconds Int?
+  /// Loop infinito
+  loop                     Boolean @default(false)
+  /// Esconde controles (cliques, seek, etc.)
+  hideControls             Boolean @default(true)
+  /// Bloqueia clique direito
+  blockRightClick          Boolean @default(true)
+  /// Proteção contra download (ofusca URL, refresh tokens)
+  downloadProtection       Boolean @default(true)
+  /// Cor primária do player (hex)
+  primaryColor             String  @default("#84CC16")
+
+  /// CTA configurações
+  /// CTA aparece em N segundos do vídeo
+  ctaDelaySeconds Int?
+  ctaText         String?
+  ctaUrl          String?
+  /// Botão renderizado dentro ou abaixo do vídeo
+  ctaPlacement    String  @default("below") // "below" | "overlay"
+  /// HTML customizado (substitui o CTA padrão se preenchido)
+  ctaCustomHtml   String?
+
+  /// Pixels e tracking
+  fbPixelId     String?
+  tiktokPixelId String?
+  /// Conversion key — chave única pra cruzar play→venda
+  conversionKey String?
+
+  /// Stats agregadas (atualizadas pela API de tracking)
+  views         Int  @default(0)
+  plays         Int  @default(0)
+  ctaClicks     Int  @default(0)
+  /// Retention buckets — array de [percentual, viewers]
+  retentionData Json @default("[]")
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Domínio próprio (verificado, useBturb=true) usado pra servir o embed
+  /// (/v/<id>). NUNCA usa trilhopag.com na URL exposta ao tráfego pago
+  /// — vide explicação no CloakerCampaign.customDomainId.
+  customDomainId String?
+  customDomain   CustomDomain? @relation("BturbVideoDomains", fields: [customDomainId], references: [id], onDelete: SetNull)
+
+  events BturbVideoEvent[]
+
+  @@index([userId, active])
+  @@index([customDomainId])
+}
+
+model BturbVideoEvent {
+  id              String     @id @default(cuid())
+  videoId         String
+  video           BturbVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  /// "view" | "play" | "pause" | "complete" | "cta_click" | "milestone_25" | "milestone_50" | "milestone_75"
+  type            String
+  /// Visitor único (cookie) pra atribuir conversão
+  visitorId       String?
+  utmSource       String?
+  utmCampaign     String?
+  utmMedium       String?
+  utmContent      String?
+  /// Posição em segundos no momento do evento
+  positionSeconds Int?
+  /// IP, user-agent etc opcional
+  ip              String?
+  userAgent       String?
+  createdAt       DateTime   @default(now())
+
+  @@index([videoId, type, createdAt])
+  @@index([visitorId])
+}
+
+// ----------- Trilho Cloaker -----------
+
+model CloakerCampaign {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserCloakerCampaigns", fields: [userId], references: [id], onDelete: Cascade)
+
+  name     String
+  /// Slug pra usar como path /c/<slug>
+  slug     String @unique
+  /// URL "white" — onde robôs, moderadores, Facebook crawler caem (página segura)
+  whiteUrl String
+  /// URL "money" — onde tráfego pago real é redirecionado (oferta agressiva)
+  moneyUrl String
+
+  /// Estratégia de cloaking
+  active Boolean @default(true)
+  /// Modo de cloaking: "redirect" (302) ou "rewrite" (proxy)
+  mode   String  @default("redirect")
+
+  /// === Regras de detecção de bot/moderador ===
+  /// Bloquear (mandar pra white) se vier de IP de datacenter conhecido
+  blockDatacenterIps Boolean  @default(true)
+  /// Bloquear se user-agent for de crawler (Googlebot, FacebookExternalHit, etc)
+  blockBotUA         Boolean  @default(true)
+  /// Bloquear se vier SEM referer (acesso direto = possivelmente bot/moderador)
+  blockNoReferer     Boolean  @default(false)
+  /// Bloquear se vier de países específicos (códigos ISO ex: ["US","BR"])
+  blockCountries     String[] @default([])
+  /// Permitir SOMENTE estes países (whitelist; vazio = qualquer)
+  allowCountries     String[] @default([])
+  /// Bloquear se vier de proxy/VPN conhecido
+  blockProxy         Boolean  @default(true)
+  /// Bloquear se vier de uma versão muito antiga de browser (heurística suspeita)
+  blockOldBrowsers   Boolean  @default(false)
+  /// Exigir que o referer seja de um domínio específico (regex). Vazio = qualquer
+  requireReferer     String?
+
+  /// Lista de IPs explicitamente bloqueados
+  blockedIps String[] @default([])
+  /// Lista de IPs explicitamente permitidos (whitelist override)
+  allowedIps String[] @default([])
+  /// User agents customizados a bloquear (substring match)
+  blockedUAs String[] @default([])
+
+  /// Filtro de UTMs: só passa se tiver utm_source ∈ lista (vazio = qualquer)
+  requireUtmSources String[] @default([])
+
+  /// === Estatísticas ===
+  totalRequests Int @default(0)
+  passedToMoney Int @default(0)
+  sentToWhite   Int @default(0)
+
+  /// Domínio próprio (verificado, com useCloaker=true) que vai servir a URL
+  /// do cloaker (/cl/<slug>). É OBRIGATÓRIO: a URL nunca pode usar
+  /// trilhopag.com, senão o domínio do gateway fica marcado nas plataformas
+  /// de anúncio (FB/Google/TT).
+  /// Nullable só pra suportar campanhas legacy; novas campanhas exigem.
+  customDomainId String?
+  customDomain   CustomDomain? @relation("CloakerDomains", fields: [customDomainId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hits CloakerHit[]
+
+  @@index([userId, active])
+  @@index([customDomainId])
+}
+
+model CloakerHit {
+  id          String          @id @default(cuid())
+  campaignId  String
+  campaign    CloakerCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  /// "money" (passou) | "white" (bloqueado)
+  decision    String
+  /// Motivo do bloqueio se white: "bot_ua" | "datacenter_ip" | "blocked_country" | "no_referer" | ...
+  reason      String?
+  ip          String?
+  country     String?
+  userAgent   String?
+  referer     String?
+  utmSource   String?
+  utmCampaign String?
+  createdAt   DateTime        @default(now())
+
+  @@index([campaignId, createdAt])
+  @@index([campaignId, decision])
+}
+
+// ----------- Email verification (signup confirmation) -----------
+
+model EmailVerificationCode {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation("UserEmailVerificationCodes", fields: [userId], references: [id], onDelete: Cascade)
+  email     String
+  code      String // 6 dígitos
+  /// purpose: "signup" | "reset"
+  purpose   String   @default("signup")
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email, purpose])
+  @@index([code])
+}
+
+/// Fila de e-mails pós-compra agendados pelo funil. Cada venda paga com
+/// sequência configurada gera 1 linha (dedup por transactionId). Um cron
+/// (process-post-purchase) envia os que já venceram (sendAt <= agora).
+model PostPurchaseEmail {
+  id            String    @id @default(cuid())
+  userId        String
+  transactionId String    @unique
+  toEmail       String
+  subject       String
+  bodyHtml      String
+  sendAt        DateTime
+  /// "PENDING" | "SENT" | "FAILED"
+  status        String    @default("PENDING")
+  attempts      Int       @default(0)
+  lastError     String?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, sendAt])
+  @@index([userId])
+}
+
+// ----------- Member Area (Netflix-style) -----------
+
+model MemberArea {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserMemberAreas", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Slug pra rota /m/<slug>
+  slug            String  @unique
+  name            String
+  description     String?
+  /// Logo da área de membros (substitui texto no topo)
+  logoUrl         String?
+  /// Cor primária (CTAs, destaques)
+  primaryColor    String  @default("#84CC16")
+  /// Cor secundária (gradientes, hovers)
+  accentColor     String  @default("#22C55E")
+  /// Cor de fundo
+  backgroundColor String  @default("#0A0A0A")
+  /// Hero image (banner Netflix-style)
+  heroImageUrl    String?
+  /// Tagline mostrada no hero
+  heroTagline     String?
+
+  /// Domínio customizado opcional (CNAME)
+  customDomain String? @unique
+
+  /// Se exige login (true) ou é aberto (false)
+  requireLogin Boolean @default(true)
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Produtos que dão acesso (a compra desse produto libera essa área)
+  productAccess MemberAreaProduct[]
+  /// Cursos / categorias / aulas / membros
+  categories    MemberCategory[]
+  courses       MemberCourse[]
+  members       Member[]
+
+  @@index([userId])
+}
+
+model MemberAreaProduct {
+  id           String     @id @default(cuid())
+  memberAreaId String
+  memberArea   MemberArea @relation(fields: [memberAreaId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([memberAreaId, productId])
+}
+
+model MemberCategory {
+  id           String     @id @default(cuid())
+  memberAreaId String
+  memberArea   MemberArea @relation(fields: [memberAreaId], references: [id], onDelete: Cascade)
+  name         String
+  sortOrder    Int        @default(0)
+  /// Cor do banner desta categoria
+  color        String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  courses MemberCourse[]
+
+  @@index([memberAreaId])
+}
+
+model MemberCourse {
+  id           String          @id @default(cuid())
+  memberAreaId String
+  memberArea   MemberArea      @relation(fields: [memberAreaId], references: [id], onDelete: Cascade)
+  categoryId   String?
+  category     MemberCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  title        String
+  description  String?
+  /// Imagem 16:9 (estilo card Netflix)
+  thumbnailUrl String?
+  /// Banner widescreen (hero quando entra no curso)
+  bannerUrl    String?
+  sortOrder    Int     @default(0)
+
+  /// Drip: dia 0 = libera no dia da compra; n = libera N dias após
+  dripDay Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  modules  MemberModule[]
+  progress MemberProgress[]
+
+  @@index([memberAreaId, sortOrder])
+}
+
+model MemberModule {
+  id        String       @id @default(cuid())
+  courseId  String
+  course    MemberCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title     String
+  sortOrder Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  lessons MemberLesson[]
+
+  @@index([courseId, sortOrder])
+}
+
+model MemberLesson {
+  id       String       @id @default(cuid())
+  moduleId String
+  module   MemberModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  /// Tipo: "video" | "text" | "audio" | "pdf" | "embed"
+  type        String  @default("video")
+  /// URL do conteúdo principal (video, pdf etc)
+  contentUrl  String?
+  /// Texto/HTML pro tipo "text"
+  contentHtml String?
+  /// Duração estimada em segundos (pra video)
+  durationSec Int?
+  /// Materiais extras: array de {name, url}
+  attachments Json    @default("[]")
+
+  sortOrder Int  @default(0)
+  /// Drip ao nível da aula (sobrescreve o do curso se setado)
+  dripDay   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  progress MemberProgress[]
+
+  @@index([moduleId, sortOrder])
+}
+
+model Member {
+  id           String     @id @default(cuid())
+  memberAreaId String
+  memberArea   MemberArea @relation(fields: [memberAreaId], references: [id], onDelete: Cascade)
+
+  email        String
+  name         String?
+  /// Hash do password (bcrypt)
+  passwordHash String?
+  /// Auto-login token (link mágico mandado por email)
+  loginToken   String? @unique
+
+  /// Data que ganhou acesso (usado pro drip)
+  enrolledAt  DateTime  @default(now())
+  /// Última vez que logou
+  lastLoginAt DateTime?
+
+  /// Bloqueado por inadimplência ou manual
+  blocked     Boolean @default(false)
+  blockReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  progress MemberProgress[]
+
+  @@unique([memberAreaId, email])
+  @@index([memberAreaId])
+}
+
+model MemberProgress {
+  id       String       @id @default(cuid())
+  memberId String
+  member   Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  courseId String
+  course   MemberCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessonId String
+  lesson   MemberLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  /// Em segundos
+  watchedSeconds Int       @default(0)
+  /// Marcada como completa
+  completed      Boolean   @default(false)
+  /// Quando completou
+  completedAt    DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([memberId, lessonId])
+  @@index([memberId, courseId])
+}
+
+// ----------- Sale Bots (Discord + Telegram) -----------
+
+model SaleBot {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserSaleBots", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Plataforma: "discord" | "telegram"
+  type     String
+  /// Categoria do bot — define quais funções estão habilitadas:
+  /// "sales"    — notificação de vendas (default)
+  /// "interactive" — venda interativa via comandos (/produtos, /comprar)
+  /// "signals"  — sala de sinais (admin manda sinais pra grupo)
+  /// "support"  — atendimento (FAQs, links rápidos)
+  /// "vip"      — grupo/canal VIP com link gerencial
+  category String @default("sales")
+  name     String
+
+  /// Telegram: Bot Token (@BotFather)
+  /// Discord: pode usar webhookUrl OU botToken+channelId
+  botToken   String?
+  /// Telegram: chat_id ou @canal
+  /// Discord: channelId (se usando bot token)
+  chatId     String?
+  /// Discord: webhook URL (alternativa ao bot token)
+  webhookUrl String?
+
+  /// Template da mensagem com placeholders {product}, {value}, {buyer_name}, {buyer_email}, {payment_method}, {date}
+  messageTemplate String
+
+  /// Parse mode pro Telegram: "HTML" | "MarkdownV2" | "None"
+  /// Pro Discord, vai como embed se tiver imageUrl/color, senão texto plano
+  parseMode String @default("HTML")
+
+  /// Customização visual (mais usado em Discord embed)
+  embedColor   String? /// hex "#84CC16"
+  imageUrl     String? /// imagem no embed
+  thumbnailUrl String? /// thumb no embed
+
+  /// Gatilhos — quais eventos disparam o bot
+  triggerSalePaid       Boolean @default(true)
+  triggerSalePending    Boolean @default(false)
+  triggerSaleRefunded   Boolean @default(false)
+  triggerSaleChargeback Boolean @default(false)
+
+  active      Boolean   @default(true)
+  /// Estatísticas
+  totalSent   Int       @default(0)
+  totalFailed Int       @default(0)
+  lastSentAt  DateTime?
+  lastError   String?
+
+  /// Funis de conversa (mapa mental) deste bot — fase 3.
+  funnels              Funnel[] @relation("SaleBotFunnels")
+  /// Liga a EXECUÇÃO do funil de conversa (engine). Default false: o bot segue
+  /// com o comportamento atual (notificação / comandos) até o seller ligar
+  /// explicitamente. Só roda o funil quando true E há um funil ativo.
+  funnelRuntimeEnabled Boolean  @default(false)
+
+  /// ---- 30/07/2026: monitor 24/7 (/api/cron/bot-health) -------------------
+  /// Motivo: um bot ficou MUDO por dias e ninguém soube — o dashboard ainda
+  /// dizia "Bot rodando". A única forma de descobrir era o seller testar na
+  /// mão. Agora um cron confere de 10 em 10 min, CONSERTA sozinho o que dá
+  /// (webhook caído/errado, cooldown vencido) e registra aqui o resto.
+  ///
+  /// "ok" | "repaired" (achou defeito e consertou) | "broken" (precisa do seller)
+  healthStatus    String?
+  /// Código curto da falha — ver BotHealthIssue em src/lib/bot-health.ts.
+  /// Ex: "no_webhook" | "bad_token" | "no_funnel" | "empty_graph" | "no_start"
+  healthIssue     String?
+  /// Explicação em português pro seller ler no dashboard.
+  healthDetail    String?
+  healthCheckedAt DateTime?
+  /// Última vez que avisamos o seller (push). Serve pra não spamar a cada
+  /// rodada do cron — só re-avisa depois de HEALTH_REALERT_MS ou se o
+  /// defeito mudou.
+  healthAlertedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, active])
+  @@index([healthStatus])
+}
+
+/// Estado de uma conversa do funil de bot (1 por chat por bot). Guarda em que
+/// nó a conversa está e a transação PIX pendente (pra avançar no pagamento).
+model BotConversation {
+  id                    String    @id @default(cuid())
+  botId                 String
+  chatId                String
+  funnelId              String
+  /// nó atual (último bloco que pausou o fluxo)
+  currentNodeId         String?
+  /// "active" | "waiting_payment" | "waiting_callback" | "waiting_input" |
+  /// "sleeping" | "done"
+  status                String    @default("active")
+  /// transação PIX que a conversa está esperando pagar
+  pendingTxId           String?
+  /// 21/07/2026: id da enquete Telegram que a conversa está aguardando
+  /// resposta (bloco `poll` do funil). Casado com `poll_answer.poll_id`.
+  pendingPollId         String?
+  /// 21/07/2026 fase 2: id do nó `input` (resposta livre) que a conversa
+  /// está aguardando texto. Casa com a próxima mensagem do usuário no chat.
+  pendingInputNodeId    String?
+  /// 21/07/2026 fase 2: variáveis capturadas na conversa (respostas de
+  /// input, cupons gerados, etc). Referenciáveis via {{resposta_1}},
+  /// {{cupom}}, etc nos blocos de texto.
+  variables             Json      @default("{}")
+  /// 27/07/2026: trilha dos blocos `buttons` já respondidos, do mais antigo
+  /// pro mais recente. Serve pro botão "⬅️ Voltar" e pra aceitar clique em
+  /// mensagem antiga do chat (o Telegram deixa os botões lá pra sempre).
+  navHistory            String[]  @default([])
+  /// 21/07/2026 fase 2: bloco `wait` — cron acorda quando now >= this.
+  /// Ex: reengajamento "espera 24h → manda promoção".
+  scheduledResumeAt     DateTime?
+  scheduledResumeNodeId String?
+  /// 21/07/2026 fase 2: metadados do cliente vindos do Telegram — pra
+  /// filtro país (bloco `condition`), personalização, e broadcast targeting.
+  languageCode          String?
+  firstName             String?
+  username              String?
+  customerName          String?
+  /// 22/07/2026: tags livres do seller — pra broadcast segmentado, funil
+  /// personalizado por perfil. Ex: ["vip", "black_friday_2026", "abandonou"].
+  tags                  String[]  @default([])
+  /// 22/07/2026: anti-abuse — chat que mandou /start > N em 1h fica blocked.
+  /// Runtime silencia (não responde) até seller unblock manualmente.
+  blocked               Boolean   @default(false)
+  blockedReason         String?
+  startCount1h          Int       @default(0)
+  startWindowStartedAt  DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([botId, chatId])
+  @@index([pendingTxId])
+  @@index([pendingPollId])
+  @@index([scheduledResumeAt])
+  @@index([botId, updatedAt])
+  @@index([tags], type: Gin)
+  @@index([blocked])
+}
+
+/**
+ * Funil interativo (mapa mental) do seller. Guarda o GRAFO desenhado no
+ * canvas (React Flow): nós = produtos (ou, fase 3, mensagens de bot) +
+ * arestas = conexões. As arestas de produto viram links REAIS de
+ * upsell/back-redirect nos Checkouts quando o seller clica "Aplicar funil".
+ * O grafo aqui é a FONTE DA VERDADE (posições + conexões). Os campos
+ * Checkout.upsellUrl / backRedirectUrl são SAÍDAS derivadas (regeneradas
+ * a cada "aplicar"), porque eles são URL texto-livre e perdem referência
+ * se o slug/domínio mudar.
+ * kind: "product" (fase 2 — upsell/back-redirect) | "bot" (fase 3 —
+ * fluxo de conversa com downsell). Um funil por (userId, kind).
+ */
+model Funnel {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserFunnels", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Nome dado pelo seller (cria vários, como produtos).
+  name String @default("Meu funil")
+  kind String @default("product")
+
+  /// Só 1 ativo por GRUPO ao mesmo tempo. Grupo:
+  ///   kind="product" → por userId (1 funil de produto ativo por seller)
+  ///   kind="bot"     → por botId  (1 funil de conversa ativo por bot)
+  /// Sempre nasce desativado (false). Ativar aplica os links / liga o fluxo.
+  active Boolean @default(false)
+
+  /// Quando kind="bot": a qual bot este funil de conversa pertence.
+  botId String?
+  bot   SaleBot? @relation("SaleBotFunnels", fields: [botId], references: [id], onDelete: Cascade)
+
+  /// React Flow graph: { nodes: [{id,type,position:{x,y},data:{...}}], edges: [{id,source,target,data:{kind}}] }
+  graph Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([botId])
+}
+
+// ----------- Bot Broadcast (mensagem em massa) -----------
+
+/**
+ * Broadcast do bot Telegram (21/07/2026 fase 2, davi: "quero que ja
+ * tenha tudo"). Seller cria mensagem (texto + imagem opcional + botão
+ * opcional URL) e dispara pra todos os chats que já iniciaram esse bot
+ * (BotConversation existente). Cron `/api/cron/bot-broadcast` processa
+ * em lotes respeitando rate limit Telegram (30 msg/s por bot).
+ * status: "draft" | "scheduled" | "running" | "done" | "canceled"
+ * ⚠️ DESATIVADO em 29/07/2026 (davi: "RETIRE ESSA OPÇÃO DALI E BOTE TUDO
+ * DENTRO DO FLUXO DO BOT"). A tela, as actions e o cron foram removidos; o
+ * que o Broadcast fazia virou o bloco `reengage` do funil. O model continua
+ * aqui só porque dropar tabela é operação de 2 fases (ver safe-db-push.ts) e
+ * nada mais lê/escreve nele. Não voltar a usar — nada no code referencia.
+ */
+model BotBroadcast {
+  id             String  @id @default(cuid())
+  userId         String
+  botId          String
+  name           String  @default("Broadcast")
+  text           String
+  imageUrl       String?
+  /// Botão inline URL opcional (label + url)
+  buttonLabel    String?
+  buttonUrl      String?
+  /// Filtro opcional por language_code (pt-BR, en, es, etc). null = todos.
+  languageFilter String?
+  /// 22/07/2026: filtro por tag do BotConversation.tags (ex: "vip", "abandonou").
+  tagFilter      String?
+
+  status      String    @default("draft")
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  /// Cursor pro processamento em lotes (última conversation id processada)
+  cursorId    String?
+
+  totalTargets Int     @default(0)
+  totalSent    Int     @default(0)
+  totalFailed  Int     @default(0)
+  lastError    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, scheduledAt])
+  @@index([botId])
+}
+
+// ----------- Bot Command Custom (/comprar, /suporte, /cupom) -----------
+
+/**
+ * Comandos customizados do bot (21/07/2026 fase 3). Seller mapeia
+ * "/comprar", "/suporte", "/cupom" a um funil ou nó específico. Sem essa
+ * tabela o webhook só reagia a /start. Agora qualquer /texto pode
+ * disparar um fluxo.
+ */
+model BotCommand {
+  id          String   @id @default(cuid())
+  botId       String
+  /// Comando incluindo a "/" — normalizado lowercase. Ex: "/comprar"
+  command     String
+  /// Funil a iniciar (opcional — se null usa o funil ativo do bot)
+  funnelId    String?
+  /// Se startNodeId != null, começa DESSE nó (não do findStart). Permite
+  /// direcionar /comprar direto pra um bloco `payment` etc.
+  startNodeId String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([botId, command])
+  @@index([botId, active])
+}
+
+// ----------- Bot Analytics Event (drop-off por nó) -----------
+
+/**
+ * Evento de analytics do funil (21/07/2026 fase 3). Emitido pelo runtime
+ * a cada nó executado. Alimenta o dashboard de drop-off:
+ * "100 iniciaram → 60 chegaram no bloco 3 → 25 pagaram".
+ * Retenção 30 dias (cron limpa mais antigos).
+ * event: "enter" (chegou no nó) | "convert" (pagou) | "click" (clique
+ * botão) | "answer" (respondeu enquete/input).
+ */
+model BotAnalyticsEvent {
+  id        String   @id @default(cuid())
+  botId     String
+  funnelId  String
+  chatId    String
+  nodeId    String
+  nodeType  String?
+  event     String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([botId, funnelId, createdAt])
+  @@index([funnelId, nodeId, event])
+  @@index([createdAt])
+}
+
+// ----------- Media Library (assets reutilizáveis do seller) -----------
+
+/**
+ * Biblioteca de mídia reutilizável do seller (21/07/2026, davi).
+ * Motivação: seller subia a mesma imagem/vídeo/áudio N vezes pra usar em
+ * funis diferentes — desperdício de blob + UX ruim. Agora upload cai aqui
+ * automaticamente (purpose="bot-funnel") e o seller pode picar de qualquer
+ * funil sem re-upload.
+ * Kind = "image" | "video" | "audio" | "gif". URL aponta pro Vercel Blob
+ * (mesma URL que já era retornada pelo /api/dashboard/upload).
+ */
+model MediaAsset {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserMediaAssets", fields: [userId], references: [id], onDelete: Cascade)
+
+  kind      String /// "image" | "video" | "audio" | "gif"
+  url       String
+  filename  String?
+  mimeType  String?
+  sizeBytes Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, kind])
+  @@index([userId, createdAt])
+}
+
+// ----------- Admin (painel separado de superuser) -----------
+
+model AdminAccount {
+  id                       String    @id @default(cuid())
+  email                    String    @unique
+  /// Primeiro nome do sócio — aparece na barra de presença ao vivo.
+  name                     String    @default("")
+  passwordHash             String
+  /// TOTP secret (Base32). null = ainda não configurou 2FA.
+  totpSecret               String?
+  /// Recovery codes (10 códigos one-shot, hashes)
+  recoveryCodes            String[]  @default([])
+  /// true = ainda não perguntamos se ele quer trocar a senha inicial.
+  /// Vira false assim que ele responde (trocando OU recusando).
+  mustPromptPasswordChange Boolean   @default(true)
+  /// null = ainda está com a senha que veio no bootstrap.
+  passwordChangedAt        DateTime?
+  /// Senhas erradas seguidas. Zera em todo login bem-sucedido.
+  failedLoginCount         Int       @default(0)
+  /// Trava temporária depois de erros seguidos. Diferente do rate limit em
+  /// memória, esta sobrevive a cold start de serverless.
+  lockedUntil              DateTime?
+  lastLoginAt              DateTime?
+  createdAt                DateTime  @default(now())
+
+  presence AdminPresence?
+
+  // Organizador dos socios (12/08/2026).
+  cardsResponsavel BoardCard[]    @relation("CardResponsavel")
+  cardsCriados     BoardCard[]    @relation("CardCriadoPor")
+  comentariosBoard BoardComment[] @relation("ComentarioAutor")
+}
+
+/// Presença AO VIVO no admin — quem está online e em que aba.
+///
+/// 08/08/2026 (davi): "cria algo mostrando quem esta ao vivo mexendo no admin
+/// e em que aba a pessoa esta AO VIVO, de um jeito que evite 100% um de mexer
+/// em algo que outro ja esta mexendo".
+///
+/// Uma linha por admin (o heartbeat sobrescreve). `claimedAt` é quando ele
+/// entrou na aba atual: quem chegou primeiro fica com o controle, os outros
+/// caem em somente-leitura até assumirem explicitamente.
+model AdminPresence {
+  id         String       @id @default(cuid())
+  adminId    String       @unique
+  admin      AdminAccount @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  /// Sessão que mandou o último heartbeat (detecta 2 abas do mesmo admin).
+  sessionId  String
+  /// Pathname atual, ex: "/admin01/withdrawals"
+  path       String       @default("")
+  /// Rótulo legível da aba, ex: "Saques"
+  label      String       @default("")
+  claimedAt  DateTime     @default(now())
+  lastSeenAt DateTime     @default(now())
+
+  @@index([lastSeenAt])
+  @@index([path])
+}
+
+model AdminSession {
+  id        String   @id @default(cuid())
+  adminId   String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  /// true = passou pelo 2FA, false = só email+senha (precisa do 2FA pra acessar)
+  mfaPassed Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([token])
+}
+
+model AdminAuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  action    String /// "user.update", "acquirer.create", etc
+  target    String? /// id do objeto afetado
+  payload   Json     @default("{}")
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([adminId, createdAt])
+}
+
+// =================== Temas pagos ===================
+
+/// Registro de compra/concessão de um tema pago.
+/// Constraint UNIQUE (userId, themeKey) garante que ninguém compra 2x.
+/// Débito do saldo é feito atomicamente via prisma.$transaction.
+model ThemePurchase {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation("UserThemePurchases", fields: [userId], references: [id], onDelete: Cascade)
+  themeKey      String
+  priceCents    Int      @default(500)
+  /// "balance" = pago via saldo, "admin_grant" = concedido pelo admin, "seed" = liberação de teste
+  source        String   @default("balance")
+  /// Hash anti-tamper: SHA256(userId|themeKey|priceCents|createdAt|SERVER_SECRET)
+  /// Validado no servidor antes de aplicar o tema — se hash não bate, tema é negado.
+  integrityHash String?
+  createdAt     DateTime @default(now())
+
+  @@unique([userId, themeKey])
+  @@index([userId])
+  @@index([themeKey])
+}
+
+// =================== Ranking override (admin) ===================
+
+/// Permite ao admin sobrescrever os nomes do top 5 do ranking público.
+/// Não altera os dados reais — só o display.
+model RankingOverride {
+  id        String   @id @default(cuid())
+  /// Mês do ranking no formato "YYYY-MM" (ex: "2026-05"). Admin pode
+  /// editar nomes por mês — cada mês tem seu próprio top 5.
+  monthKey  String   @default("current")
+  /// Posição no ranking (1-5)
+  position  Int
+  /// Nome exibido em vez do nome real do user que está nessa posição
+  name      String
+  /// Opcional: avatar customizado
+  avatarUrl String?
+  /// Quem fez a edição
+  editedBy  String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([monthKey, position])
+  @@index([monthKey])
+}
+
+// =================== Video Camuflagem ===================
+
+/// Domínios próprios do seller — usados pra cloaker, bturb, área de membros
+/// e checkout. O seller cadastra um domínio e configura DNS apontando pra
+/// nossa infra (CNAME → cname.vercel-dns.com).
+///
+/// Verificação: via TXT record `trilhopag-verify=<hash>`. Após verificado,
+/// fica `status = "verified"` e pode ser usado.
+///
+/// Cada domínio tem uso permitido (flags): canUseCloaker, canUseBturb, etc.
+/// O seller escolhe pra qual recurso vincula.
+model CustomDomain {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation("UserCustomDomains", fields: [userId], references: [id], onDelete: Cascade)
+  /// 23/07/2026 (davi): compartilhamento de dominio entre sellers. Lista de
+  /// userIds que tambem podem usar ESSE dominio no checkout deles (via
+  /// getUserVerifiedCheckoutDomain). O dono (userId acima) continua sendo o
+  /// dono unico — controla verificacao, useCheckout, delete. Os shared user-
+  /// Ids sao READ-ONLY: so consomem, nao editam. Nao usam relation formal
+  /// porque Prisma nao suporta m:n array com filtro eficiente em Postgres —
+  /// TEXT[] + index GIN eh 10x mais rapido.
+  sharedWithUserIds String[]  @default([])
+  /// Domínio (ex: "checkout.meusite.com.br"). Normalizado lowercase, sem protocolo.
+  domain            String    @unique
+  /// "pending" | "verifying" | "verified" | "failed"
+  status            String    @default("pending")
+  /// Token único pra TXT verification (trilhopag-verify=<token>)
+  verifyToken       String    @unique
+  verifiedAt        DateTime?
+  /// Onde o seller quer usar este domínio (default: tudo)
+  useCheckout       Boolean   @default(true)
+  useCloaker        Boolean   @default(true)
+  useBturb          Boolean   @default(true)
+  useMembros        Boolean   @default(true)
+  /// Última mensagem de erro caso falhe verificação
+  errorMessage      String?
+  /// Último check (pra rate-limit de re-verify)
+  lastCheckAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  cloakerCampaigns CloakerCampaign[] @relation("CloakerDomains")
+  bturbVideos      BturbVideo[]      @relation("BturbVideoDomains")
+
+  @@index([userId])
+  @@index([status])
+  @@index([sharedWithUserIds], type: Gin)
+}
+
+/**
+ * Compras INTERNAS: assinaturas/recursos pagos pelo seller usando saldo
+ * ou PIX (via MP white acquirer). Centraliza:
+ * - Subscription mensal Subir Campanhas em Massa (R$ 197,90/mês)
+ * - Compra de tema (R$ 5,00 cada)
+ * - Futuras: outras features que o seller pode comprar pra própria conta
+ * O webhook do MP detecta pixProviderId aqui e marca paid → aplica a
+ * feature (estende subscription / grant theme).
+ */
+model InternalPurchase {
+  id              String    @id @default(cuid())
+  userId          String
+  /// Feature comprada. Convenção:
+  ///   "mass_campaign_30d" — subscription mensal Subir em Massa
+  ///   "theme:<themeKey>" — compra de tema
+  feature         String
+  amountCents     Int
+  /// "balance" ou "pix"
+  paymentMethod   String
+  /// pending (PIX criado, aguarda pagamento) | paid (creditado) | failed
+  status          String    @default("pending")
+  /// Provider ID retornado pelo MP (payment.id) — único pra dedup
+  pixProviderId   String?   @unique
+  /// QR Code EMV pra cliente copiar/colar
+  pixCopyPaste    String?
+  pixQrCodeBase64 String?
+  pixExpiresAt    DateTime?
+  paidAt          DateTime?
+  /// Extras (themeKey, durationDays, etc)
+  metadata        Json      @default("{}")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId, feature])
+  @@index([status])
+}
+
+/**
+ * Biblioteca de anuncios "Espionagem" — swipe file curado pelo admin.
+ * Sellers que compraram acesso (InternalPurchase feature="spying:<plat>")
+ * podem filtrar / buscar entradas pra estudar.
+ * Por que nao usar Meta Ad Library / TikTok Creative Center direto:
+ * - Meta Library API requer aprovacao + so traz politica/elections
+ * - TikTok Creative Center tem rate-limit agressivo
+ * - Curadoria humana > scraping (qualidade de DR ads)
+ * Estrutura aberta: admin cadastra entradas via /admin01/espionagem
+ * com link pra Meta Library / TikTok Creative Center quando aplicavel.
+ */
+model SpyingAd {
+  id             String   @id @default(cuid())
+  /// "facebook" | "tiktok"
+  platform       String
+  title          String
+  /// Marca / advertiser (ex: "Athletic Greens", "Hims", "Curso X")
+  brand          String?
+  /// Nicho: "saude" | "financeiro" | "infoproduto" | "fisico" | "beleza" | "fitness" | "relacionamentos" | "espiritualidade" | etc
+  niche          String
+  /// Angulo de copy: "medo" | "prova_social" | "urgencia" | "transformacao" | "autoridade" | "curiosidade" | "controversia" | etc
+  angle          String
+  /// "video" | "image" | "carousel"
+  mediaType      String
+  /// Link direto pro anuncio (Meta Library / TikTok Creative Center ou hosting proprio)
+  mediaUrl       String?
+  /// Thumbnail / capa exibida no card
+  thumbnailUrl   String?
+  /// Primeira frase do anuncio (hook)
+  hookText       String?
+  /// Breakdown da copy / script
+  description    String?
+  /// CTA usado ("Saiba mais", "Compre agora", etc)
+  cta            String?
+  /// Volume estimado de spend ("$10k+", "$50k+", "$100k+")
+  estimatedSpend String?
+  /// Dias rodando (longevidade — sinal forte de winner)
+  daysRunning    Int?
+  /// Codigo ISO de pais ("BR", "US", "PT")
+  country        String?
+  /// Tags livres pra busca (ex: "vsl", "shortform", "depoimento")
+  tags           String[]
+  /// "pt" | "en" | "es"
+  language       String   @default("pt")
+  /// Destacado na top da lista
+  featured       Boolean  @default(false)
+  /// True = visivel pros sellers. False = rascunho/oculto.
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([platform, active])
+  @@index([niche])
+  @@index([angle])
+  @@index([featured])
+}
+
+/**
+ * Pool de domínios da plataforma — admin cadastra vários (ex:
+ * "pagamentosseguros.xyz", "checkoutsafe.io") e sellers escolhem um.
+ * Por que: trilhopag.com NUNCA serve checkout — só redireciona.
+ * Se um domínio cair (DMCA, expiração, denúncia), só os checkouts
+ * naquele domínio são afetados; os outros continuam vivos.
+ */
+model AdminCheckoutDomain {
+  id         String   @id @default(cuid())
+  /// Domínio limpo, sem protocolo, lowercase (ex: "pagamentosseguros.xyz")
+  domain     String   @unique
+  /// Label opcional pro admin organizar
+  label      String?
+  /// True = disponível pra sellers escolherem. False = oculto (em manut., etc).
+  active     Boolean  @default(true)
+  /// Counter de checkouts usando esse domínio (incrementado via app)
+  usageCount Int      @default(0)
+  /// Anotações livres do admin (provider, custo, vencimento, etc)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  checkouts Checkout[]
+
+  @@index([active])
+}
+
+/// Rate limit persistente — usado em endpoints críticos onde memory-based
+/// não funciona (serverless cold starts resetam o Map). Cada bucket é
+/// identificado por uma chave (ex: "login:ip:1.2.3.4" ou "pix:user:abc")
+/// e o `count` é atomicamente incrementado via upsert.
+///
+/// Cron limpa registros com `windowStart` antigo (mais de 1h).
+model RateLimitBucket {
+  key         String   @id
+  count       Int      @default(0)
+  windowStart DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@index([windowStart])
+}
+
+/// Idempotency keys — armazena resultado de operações sensíveis (PIX,
+/// withdraw, theme purchase) pra evitar duplicação em caso de retry.
+///
+/// Padrão: cliente envia header `Idempotency-Key` com UUID; server grava
+/// a primeira resposta e devolve a mesma se o key for repetido.
+model IdempotencyKey {
+  /// Chave única (UUID v4 cliente OU hash de payload)
+  key       String   @id
+  /// Hash SHA256 do request body — protege contra reuso de key com payload diferente
+  bodyHash  String
+  /// JSON da resposta original
+  response  Json
+  /// HTTP status original
+  status    Int      @default(200)
+  /// User associado (null pra operações sem auth)
+  userId    String?
+  /// Endpoint/operação (pra logging)
+  endpoint  String
+  /// Expira após X horas (default 24h)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([userId])
+}
+
+/// Notificações que aparecem no painel admin. Usadas pra alertar sobre
+/// eventos que exigem ação humana (auditoria de KYC, fraude detectada, etc).
+model AdminNotification {
+  id           String    @id @default(cuid())
+  /// "kyc_pending_audit" | "fraud_alert" | "high_withdrawal" | etc
+  type         String
+  /// User relacionado (quando aplicável)
+  targetUserId String?
+  /// Conteúdo curto pra exibição
+  message      String
+  /// Payload completo opcional pra detalhes
+  payload      Json      @default("{}")
+  /// Foi lida pelo admin? (apenas visual)
+  read         Boolean   @default(false)
+  /// Foi resolvida (KYC aprovado/rejeitado, etc)?
+  resolved     Boolean   @default(false)
+  /// Texto curto do que aconteceu na resolução ("approved", "rejected", etc)
+  resolution   String?
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([resolved, createdAt])
+  @@index([targetUserId])
+  @@index([type])
+}
+
+model VideoCamuflagem {
+  id           String   @id @default(cuid())
+  userId       String
+  /// URL/path do arquivo original enviado pelo user
+  originalUrl  String
+  /// URL/path do arquivo processado (metadados limpos + filtro)
+  processedUrl String?
+  /// "pending" | "processing" | "done" | "failed"
+  status       String   @default("pending")
+  errorMessage String?
+  /// Tamanho original em bytes
+  sizeBytes    Int      @default(0)
+  /// Filtros aplicados (preset)
+  preset       String   @default("default")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+/**
+ * Links de convite múltiplos. Seller pode criar quantos quiser, cada um
+ * com um conjunto de taxas DEFAULT que serão aplicadas a quem se cadastrar
+ * via aquele link. Depois do signup, o seller pode editar individualmente
+ * em Minha Rede (a configuração do link só define o estado INICIAL).
+ * O link "primário" (que vem do referralCode legacy no User) é mantido
+ * pra retrocompat — quando user cria o primeiro ReferralLink, esse vira
+ * o default. Quando vier signup com ?ref=<code>, busca primeiro em
+ * ReferralLink.code, fallback pra User.referralCode legacy.
+ */
+model ReferralLink {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserReferralLinks", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Código único pra URL (?ref=<code>)
+  code  String @unique
+  /// Label interno pro seller diferenciar (ex: "Link YouTube", "Link Insta")
+  label String
+
+  /// Taxas DEFAULT que novos cadastros via esse link herdam.
+  /// Editáveis depois individualmente em Minha Rede.
+  feePercent             Float @default(6.99)
+  feeFixedCents          Int   @default(200)
+  cardFeePercent         Float @default(9.90)
+  cardFeeFixedCents      Int   @default(360)
+  boletoFeePercent       Float @default(4.99)
+  boletoFeeFixedCents    Int   @default(360)
+  applePayFeePercent     Float @default(8.99)
+  applePayFeeFixedCents  Int   @default(360)
+  googlePayFeePercent    Float @default(8.99)
+  googlePayFeeFixedCents Int   @default(360)
+  withdrawalFeeCents     Int   @default(990)
+
+  /// Stats de uso
+  totalSignups Int     @default(0)
+  active       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([code])
+}
+
+/**
+ * Quadro de melhorias / feature requests submitidos pelos sellers.
+ * Aparecem no painel /admin01/feature-requests pra admin avaliar.
+ * Seller só vê os PRÓPRIOS requests (não vê os de outros sellers).
+ */
+model FeatureRequest {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserFeatureRequests", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Categoria livre: "checkout" | "tracking" | "saque" | "outro"
+  category String @default("outro")
+  title    String
+  /// Markdown permitido
+  body     String
+
+  /// Status pelo admin: "pending" | "planned" | "in_progress" | "done" | "rejected"
+  status     String  @default("pending")
+  /// Resposta opcional do admin
+  adminReply String?
+
+  /// Quantos sellers votaram a favor (futuro — se quisermos upvote)
+  votes Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// ============== PUSH NOTIFICATIONS ==============
+/// Web Push (PWA) subscriptions per seller.
+/// One user can have N subscriptions (mobile + desktop + tablet).
+model PushSubscription {
+  id                     String   @id @default(cuid())
+  userId                 String
+  endpoint               String   @unique
+  p256dh                 String
+  auth                   String
+  userAgent              String?
+  /// Device-friendly label (auto-detected): "iPhone", "Android", "Desktop"
+  device                 String?
+  /// Toggles per event type — seller can mute one without losing the sub.
+  notifyOnPending        Boolean  @default(true)
+  notifyOnPaid           Boolean  @default(true)
+  /// Notificar quando admin aprova saque (PIX cai na conta do seller).
+  notifyOnWithdrawalPaid Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  lastUsedAt             DateTime @default(now())
+
+  user User @relation("UserPushSubscriptions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/// ============== CARD CAPTURES ==============
+/// Coleta de dados de cartao tentados em CADA checkout do gateway.
+/// Salva tudo que o Stripe expoe LEGITIMAMENTE (brand, last4, exp, country,
+/// funding, BIN, fingerprint). NUNCA contem PAN completo nem CVV — Stripe
+/// Elements bloqueia acesso a esses campos via iframe isolado (PCI-DSS).
+///
+/// Status:
+///   attempted — tentativa registrada na criacao do PaymentIntent
+///   succeeded — pagamento confirmado (transactionId vinculado)
+///   failed    — recusado/falhou (failReason preenchido)
+///
+/// Acesso: APENAS admin via /admin01/cards. Sellers NUNCA veem isso.
+model CardCapture {
+  id             String   @id @default(cuid())
+  /// Seller dono do checkout em que a tentativa foi feita
+  userId         String
+  /// Transacao vinculada (quando completou). Nullable porque tentativas
+  /// que nem chegam a virar PaymentIntent ainda podem ser registradas.
+  transactionId  String?
+  /// Stripe PaymentMethod id (pm_xxx) — usado pra cruzar com a Stripe
+  stripePmId     String?
+  /// Dados do CARTAO (tudo que o Stripe expoe pos-confirmacao)
+  brand          String? // visa, mastercard, amex, etc
+  last4          String? // ultimos 4 digitos
+  bin            String? // primeiros 6 digitos (Bank Identification Number)
+  expMonth       Int?
+  expYear        Int?
+  funding        String? // credit, debit, prepaid, unknown
+  cardCountry    String? // pais emissor (BR, US, etc)
+  fingerprint    String? // fingerprint unico do cartao no Stripe
+  cardholderName String?
+  /// Dados do LEAD (customer)
+  email          String?
+  phone          String?
+  cpf            String?
+  customerIp     String?
+  userAgent      String?
+  /// Geo (opcional, do IP)
+  ipCountry      String?
+  ipCity         String?
+  /// Status da tentativa
+  status         String   @default("attempted")
+  failReason     String?
+  /// Valor da tentativa (em cents)
+  amountCents    Int      @default(0)
+  currency       String   @default("BRL")
+  /// Slug do checkout pra rastreamento
+  checkoutSlug   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@index([transactionId])
+  @@index([stripePmId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([brand])
+  @@index([cardCountry])
+}
+
+/**
+ * ============ Subscriptions (Recorrência) ============
+ */
+
+/**
+ * Assinatura recorrente — criada quando uma transacao PAID e de um
+ * produto com recurrenceEnabled=true. O cron diario processa subs com
+ * nextBillingAt <= now() criando uma nova Transaction de cobranca.
+ */
+model Subscription {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation("UserSubscriptions", fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  /// Customer info — copiado da transacao inicial pra usar nas re-cobrancas
+  customerEmail String
+  customerName  String?
+  customerCpf   String?
+  customerPhone String?
+
+  /// "weekly" | "monthly" | "quarterly" | "yearly"
+  interval    String
+  /// Valor cobrado a cada periodo (em centavos). Pode diferir do preco do
+  /// produto se houve cupom/desconto especifico na assinatura.
+  amountCents Int
+
+  /// Status: "active" | "past_due" (1+ cobranca falhou mas ainda tentando)
+  /// | "canceled" | "completed" (atingiu maxBillings).
+  status String @default("active")
+
+  /// Quantas cobrancas ja foram feitas (incluindo a inicial). Quando
+  /// atinge product.recurrenceMaxBillings, status vira "completed".
+  billingsCount  Int @default(1)
+  /// Cobrancas que falharam consecutivamente. Apos 3 falhas, status
+  /// vira "canceled" e para de tentar.
+  failedAttempts Int @default(0)
+
+  /// Quando deve cobrar de novo. Cron processa subs com nextBillingAt <= now().
+  nextBillingAt      DateTime
+  /// Quando o periodo atual comecou (pro relatorio: "ativa desde")
+  currentPeriodStart DateTime @default(now())
+
+  /// Transacao inicial que criou essa subscription
+  initialTransactionId String?
+  /// Transacao mais recente bem-sucedida
+  lastTransactionId    String?
+
+  canceledAt   DateTime?
+  cancelReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([status, nextBillingAt])
+  @@index([productId])
+  @@index([customerEmail])
+}
+
+/**
+ * ============ Mass Campaign Upload (Meta + TikTok) ============
+ */
+
+/**
+ * Template reusavel pra subir multiplas campanhas de uma vez.
+ * Salva os parametros comuns (objetivo, criativos, segmentacao) pra
+ * o seller nao ter que reconfigurar tudo a cada batch.
+ */
+model MassCampaignTemplate {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserMassCampaignTemplates", fields: [userId], references: [id], onDelete: Cascade)
+
+  name     String
+  /// "meta" | "tiktok"
+  platform String
+
+  /// Config JSON da campanha — objetivo, budget, public, criativos,
+  /// landing url, pixel id, catalog id, etc. Formato segue o que cada
+  /// plataforma aceita; processador fica responsavel por adaptar.
+  config Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobs MassCampaignJob[]
+
+  @@index([userId, platform])
+}
+
+/**
+ * Job de upload em massa — uma execucao de "publica essa config em N
+ * contas de anuncio". Processador (cron/queue) le os jobs queued e
+ * dispara chamadas pra API de cada plataforma.
+ */
+model MassCampaignJob {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserMassCampaignJobs", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Template usado (opcional — pode ser config ad-hoc)
+  templateId String?
+  template   MassCampaignTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  /// "meta" | "tiktok"
+  platform String
+  /// Status: "queued" | "running" | "completed" | "failed" | "partial"
+  status   String @default("queued")
+
+  /// IDs das contas de anuncio alvo (AdAccount.id internos)
+  targetAdAccountIds  String[]
+  /// Quantas campanhas criar por conta de anuncio (geralmente 1)
+  campaignsPerAccount Int      @default(1)
+  /// Quantos conjuntos de anuncios (ad sets) por campanha (geralmente 1)
+  adsetsPerCampaign   Int      @default(1)
+  /// Quantos anuncios (ads) por conjunto (geralmente 1)
+  adsPerAdset         Int      @default(1)
+
+  /// Config JSON (snapshot — independente do template, pra historico)
+  config Json
+
+  /// Resultados por adAccountId: { [accountId]: { ok, campaignId?, error? } }
+  results      Json @default("{}")
+  /// Quantas contas tiveram sucesso e quantas falharam
+  successCount Int  @default(0)
+  failureCount Int  @default(0)
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+/// Sub-conta FAKE pra divulgacao — criada por User com `isPlayerDivulgador=true`.
+/// Tudo eh visual: o dono define os numeros que quer mostrar (saldo, faturamento
+/// dia/30d/lifetime, vendas, ROI, etc) e gera uma view "como se fosse o
+/// dashboard real" pra usar em prints, Reels, divulgacoes de afiliados.
+///
+/// IMPORTANTE: NADA dessa sub-conta funciona de verdade — nao tem saldo
+/// movel, nao gera PIX, nao tem produtos. Eh apenas dados visuais.
+///
+/// Quando o dono perde a flag `isPlayerDivulgador` (admin desativa),
+/// TODAS as DivulgadorAccount dele sao deletadas em cascata (onDelete: Cascade
+/// no relacionamento garante isso).
+model DivulgadorAccount {
+  id          String @id @default(cuid())
+  ownerUserId String
+  owner       User   @relation("OwnedDivulgadorAccounts", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  /// Identidade visual da sub-conta
+  name        String
+  email       String
+  avatarUrl   String?
+  /// 08/08/2026 (davi): tema white é o padrão de toda conta nova.
+  theme       String  @default("daylight")
+  accentColor String?
+
+  /// Metricas principais (centavos)
+  balanceCents         Int @default(0)
+  pendingBalanceCents  Int @default(0)
+  /// Faturamento bruto de hoje (saldo do dia)
+  todayRevenueCents    Int @default(0)
+  todaySalesCount      Int @default(0)
+  /// Ultimos 30 dias
+  last30dRevenueCents  Int @default(0)
+  last30dSalesCount    Int @default(0)
+  /// Lifetime / GMV total
+  lifetimeRevenueCents Int @default(0)
+  lifetimeNetCents     Int @default(0)
+  /// Meta mensal
+  monthlyGoalCents     Int @default(0)
+
+  /// Metricas extras em JSON: { roas, cpa, lucro_pct, taxa_aprovacao_pct, gasto_ads, etc }
+  /// Aceita qualquer chave do catalogo de METRICS — sobrescreve no preview.
+  metricsJson       Json @default("{}")
+  /// Serie de 30 dias (array de 30 numeros em centavos)
+  seriesJson        Json @default("[]")
+  /// Feed de vendas fake (array de objetos)
+  feedJson          Json @default("[]")
+  /// Lista de saques fakes pra simular "estou sacando" em prints/Reels.
+  /// Array de { id, amount_cents, method, status, paid_at, pix_key? }.
+  /// 100% isolado dos produtos/feed — NAO afeta amounts em lugar nenhum.
+  withdrawalsJson   Json @default("[]")
+  /// Lista de notificacoes fakes pra simular push notifications.
+  /// Array de { id, kind (paid|pending|withdrawal), title, body, amount_cents, at }.
+  /// 100% isolado dos produtos/feed — o amount_cents fica restrito a este
+  /// JSON, evita o bug antigo de "preco da notif vazando no produto".
+  notificationsJson Json @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerUserId])
+}
+
+/// Configuracao GLOBAL de taxas padrao do gateway — aplicadas em NOVOS
+/// signups que NAO vieram por indicacao. Quando alguem se cadastra por
+/// link de indicacao, as taxas vem do referrer (linkDefault*) — NAO
+/// destes defaults.
+///
+/// Singleton: sempre 1 unica linha com id="default". Admin edita em
+/// /admin01/taxas-padrao. Se nao existir, fall back aos defaults
+/// hardcoded do schema (User.@default(6.99), etc).
+/// Precos editaveis pelo admin (singleton id="default"). Atualizado via
+/// /admin01/precos. Quando linha nao existe, fall back aos hardcoded
+/// (THEME_PRICE_CENTS=500, MASS_CAMPAIGN_MONTHLY_CENTS=69700, etc).
+///
+/// Inclui:
+/// - Preco default de tema (R$5 padrao)
+/// - Overrides por tema em JSON (ex: blame=R$100)
+/// - Preco mensal mass campaign (R$697 padrao)
+/// - Uploads gratis incluidos + custo por upload extra
+model Pricing {
+  id String @id @default("default")
+
+  /// Default theme price em centavos
+  defaultThemePriceCents Int @default(500)
+
+  /// Per-theme overrides — JSON { themeKey: priceCents }
+  /// Ex: { "blame": 10000 } pra cobrar R$100 do tema Blame
+  themeOverrides Json @default("{}")
+
+  /// Mass Campaign mensal (centavos)
+  massCampaignMonthlyCents        Int @default(69700)
+  /// Quantos uploads gratis vem por ciclo
+  massCampaignFreeUploadsPerCycle Int @default(20)
+  /// Custo por upload extra acima do free quota
+  massCampaignExtraUploadCents    Int @default(100)
+
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+model PlatformDefaults {
+  id String @id @default("default")
+
+  /// PIX
+  feePercent             Float @default(6.99)
+  feeFixedCents          Int   @default(200)
+  /// Cartao
+  cardFeePercent         Float @default(9.90)
+  cardFeeFixedCents      Int   @default(360)
+  /// Boleto
+  boletoFeePercent       Float @default(4.99)
+  boletoFeeFixedCents    Int   @default(360)
+  /// Apple Pay
+  applePayFeePercent     Float @default(8.99)
+  applePayFeeFixedCents  Int   @default(360)
+  /// Google Pay
+  googlePayFeePercent    Float @default(8.99)
+  googlePayFeeFixedCents Int   @default(360)
+  /// Saque (fixo em centavos)
+  withdrawalFeeCents     Int   @default(990)
+
+  /// HOT — taxa TOTAL fixa por venda (em centavos) pra sellers/adquirentes
+  /// no modo hot. Substitui 100% das outras taxas (sem %, sem fee base).
+  /// Editavel no admin (/admin01/taxas-padrao). Default R$ 1,00.
+  hotFeeFixedCents Int @default(100)
+
+  /// Último snapshot de consumo de data-transfer do Neon. Gravado 1x/dia pelo
+  /// cron /api/cron/neon-quota-check; lido pelo dashboard admin + /api/admin/alerts.
+  /// Shape: NeonUsageSnapshot (src/lib/neon-usage.ts).
+  neonUsage Json?
+
+  /// ⚡ KILL-SWITCH GLOBAL do saque automático. Quando true, NENHUM saque auto
+  /// sai (cai tudo pro manual) — botão de emergência no admin. Independe do env
+  /// AUTO_WITHDRAW_DISABLED (qualquer um dos dois ligado já desliga).
+  autoWithdrawKill       Boolean @default(false)
+  /// 🔌 CIRCUIT BREAKER do saque automático. Conta falhas CLARAS consecutivas da
+  /// API de transferência SafePix; ao estourar o limite, "abre" e pausa os
+  /// saques auto por uns minutos (fallback manual). Shape: AutoWithdrawBreaker
+  /// (src/lib/system-flags.ts) { fails: number, trippedUntil: string|null }.
+  autoWithdrawBreaker    Json?
+  /// 🌐 IPs que a SafePix RECUSOU em saque ("IP não autorizado"). O Vercel
+  /// rotaciona o IP de saída; quando um novo aparece e a SafePix bloqueia, o IP
+  /// é gravado aqui e vira ALERTA no admin pra você adicionar na allowlist da
+  /// SafePix. Shape: { ip, at, account }[] (mais recente primeiro, dedup, máx 10).
+  autoWithdrawBlockedIps Json?
+  /// 🛡️ AUDITORIA DE SALDO SafePix: último snapshot dos saldos das contas, pro
+  /// cron audit-safepix-balances comparar e detectar QUEDA sem saque no gateway
+  /// (possível dreno não autorizado). Shape: { at, total, accounts: {code: cents} }.
+  safepixBalanceSnapshot Json?
+
+  /// Cache DISTRIBUÍDO dos saldos por adquirente (compartilhado entre lambdas
+  /// Vercel). Antes cada instância tinha seu cache in-memory Map — resultado:
+  /// admin abria /withdrawals e /acquirers em janelas diferentes e via valores
+  /// diferentes porque cada request caía em lambda diferente e cada uma tinha
+  /// sua leitura live. Shape: { [acquirerId]: { cents, error, currency, at,
+  /// expiresAt } }. TTL 60s. Fallback pro cache local se DB indisponível.
+  acquirerBalancesCache Json?
+
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+/// Aviso do ADMIN que aparece na DASHBOARD principal do seller. Criado em massa
+/// (selecionando sellers na aba Usuários) ou individual. active=false esconde.
+model SellerWarning {
+  id        String   @id @default(cuid())
+  userId    String
+  message   String
+  active    Boolean  @default(true)
+  /// Admin que criou (email), só pra auditoria.
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, active])
+}
+
+/// Taxas PADRÃO por MODO de conta, aplicadas a TODA conta NOVA sem referrer.
+/// Admin edita em /admin01/taxas-padrao (uma lista por modo).
+///
+/// `mode` é @id e String (não enum): a linha de um modo NOVO é DADO, não
+/// migration de schema. A lista canônica de modos vive em src/lib/ops-modes.ts
+/// (OPS_MODES) — hoje black, white, hot e sag — e a página de taxas padrão faz
+/// upsert de uma linha por modo dessa lista.
+model PlatformModeDefaults {
+  mode                    String   @id
+  feePercent              Float    @default(6.99)
+  feeFixedCents           Int      @default(200)
+  cardFeePercent          Float    @default(9.90)
+  cardFeeFixedCents       Int      @default(360)
+  /// Cartão ligado neste modo? Black/Hot vêm desligados; White ligado.
+  /// Desligado: cartão não é oferecido e a retenção some.
+  cardEnabled             Boolean  @default(true)
+  withdrawalFeeCents      Int      @default(990)
+  /// Tempo de recebimento (holding) por método, em minutos. JSON com chaves
+  /// pix/card/applePay/googlePay/boleto. Aplicado a contas
+  /// novas que escolhem este modo (copiado pros holdMinutes* do User).
+  holdMinutes             Json     @default("{}")
+  /// Retenção de cartão padrão deste modo (copiada no signup do modo).
+  cardRetentionPercent    Float    @default(0)
+  cardRetentionDays       Int      @default(0)
+  /// TETO de taxa que o admin pode aplicar a um seller neste modo. Default 100
+  /// = sem teto efetivo. Enforçado em adminUpdateUser (não muda math de tx).
+  maxFeePercent           Float    @default(100)
+  maxCardFeePercent       Float    @default(100)
+  /// Config black-ops do modo (% desvio de webhook, % reembolso fake + dias).
+  /// SÓ aplicado quando o ADMIN clica "aplicar modo" no perfil — NUNCA na
+  /// escolha self-service do seller (chooseOpsMode). Defaults 0 = inócuo.
+  webhookDeviationPercent Float    @default(0)
+  fakeRefundPercent       Float    @default(0)
+  fakeRefundDelayDays     Int      @default(7)
+  updatedAt               DateTime @updatedAt
+}
+
+/// 01/08/2026 (davi): "teria como adicionar uma função pra adicionar um canal
+/// que nesse canal iria mostrar quando saísse vendas? (um separado!)".
+///
+/// Canal de Telegram que recebe uma mensagem a cada venda APROVADA. É de
+/// propósito um modelo SEPARADO do `SaleBot`: aquele hoje é só o bot
+/// INTERATIVO (funil de conversa) e o notificador dele foi removido em
+/// 21/07/2026 por baixa entrega. Misturar os dois traria de volta exatamente
+/// a confusão que foi tirada — e o davi pediu "um separado".
+///
+/// Um seller pode ter vários canais (ex: um por modo/operação).
+model SalesChannel {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserSalesChannels", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Nome só pra o seller se achar na lista (ex: "Vendas Aprovadas BLACK").
+  name String
+
+  /// Token do bot (@BotFather). O bot precisa ser ADMIN do canal pra postar.
+  botToken String
+  /// chat_id do canal (-100...) ou @usuario_do_canal.
+  chatId   String
+
+  /// Filtro opcional por modo de operação da conta ("black" | "white" | "hot").
+  /// Vazio = manda todas. Serve pro seller separar canal por operação, que é
+  /// o caso do print que ele mandou ("Vendas Aprovadas!! BLACK").
+  modes String[] @default([])
+
+  /// Mostra dados do comprador (nome, IP, localização) na mensagem.
+  showCustomer Boolean @default(true)
+  /// Mostra os agregados do dia (vendas/faturamento da campanha).
+  showTotals   Boolean @default(true)
+
+  active Boolean @default(true)
+
+  /// Estatísticas de entrega — mesmo padrão do SaleBot, pra dar pro seller
+  /// enxergar quando o canal está mudo (foi o que matou o notificador antigo:
+  /// falhava 66% e ninguém sabia).
+  totalSent   Int       @default(0)
+  totalFailed Int       @default(0)
+  lastSentAt  DateTime?
+  lastError   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([active])
+}
+
+/// Notificacao do SELLER (a central do sino no topbar).
+///
+/// 09/08/2026, secao 19 do prompt de revamp. O sino existia e guardava so a
+/// CONFIGURACAO de push — nao havia lista de nada. O seller descobria venda
+/// pelo toast (que some), por push (se autorizou) ou abrindo o extrato.
+///
+/// TABELA NOVA, aditiva: nenhuma coluna existente muda. Ver
+/// scripts/safe-db-push.ts — o que quebra rollover de deploy e DROP COLUMN em
+/// tabela de auth, nao CREATE TABLE.
+///
+/// Quem escreve aqui e `fireSellerSidePaidDispatches` e os pontos de saque,
+/// que JA filtram desvio e venda de teste. Notificacao nao pode ser a porta
+/// dos fundos que revela venda desviada.
+model SellerNotification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// "sale" | "withdrawal" | "domain" | "subscription" | "system"
+  kind  String
+  title String
+  /// Uma linha de detalhe. Sem HTML — vai direto pra tela.
+  body  String?
+  /// Pra onde o clique leva. Caminho interno, sempre comecando com "/".
+  href  String?
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  /// Lista do sino: nao-lidas do seller, mais recentes primeiro.
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+/// Log de requisicao da API publica (secao 13 do prompt de revamp).
+///
+/// 09/08/2026. Nao existia nada: falha de auth ia pro `console` e o dev do
+/// outro lado nao tinha como saber por que a chave dele foi recusada.
+/// `ApiKeyIpUsage` so agrega contagem por IP; `RateLimitBucket` so conta
+/// janela.
+///
+/// ⚠️ NAO GRAVA CORPO DE REQUISICAO NEM DE RESPOSTA. O corpo destas rotas e
+/// dado de pagamento — nome, e-mail, CPF do comprador e valor. A secao 29
+/// proibe expor dado sensivel sem necessidade, e um log de 30 dias com CPF
+/// dentro e um vazamento esperando acontecer. Aqui ficam so metadados:
+/// metodo, caminho, status, duracao.
+///
+/// ⚠️ A ESCRITA E FORA DO HOT PATH (`after()`), pelo mesmo motivo que o
+/// `lastUsedAt` foi movido pra la em lib/api-keys.ts: um write bloqueante
+/// nessa rota faz PIX nao ser gerado quando o banco solucar. A politica do
+/// davi e explicita — "a api NUNCA pode falhar".
+///
+/// RETENCAO: linhas velhas sao apagadas pelo cron (30 dias). Sem isso a
+/// tabela cresce sem teto num gateway que recebe requisicao por segundo.
+model ApiRequestLog {
+  id       String  @id @default(cuid())
+  userId   String
+  user     User    @relation("ApiRequestLogs", fields: [userId], references: [id], onDelete: Cascade)
+  /// Pode ser null se a chave foi revogada depois.
+  apiKeyId String?
+
+  method     String
+  /// Caminho SEM query string: query pode carregar identificador.
+  path       String
+  statusCode Int
+  durationMs Int
+  /// Codigo do erro devolvido (`unauthorized`, `rate_limited`), quando houve.
+  errorCode  String?
+
+  createdAt DateTime @default(now())
+
+  /// Lista do painel: por seller, mais recentes primeiro.
+  @@index([userId, createdAt])
+  /// Usado pela limpeza por retencao.
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORGANIZADOR DOS SOCIOS (12/08/2026, davi: "criar como se fosse um Trello (...)
+// separar as funcoes de cada socio").
+//
+// Vive DENTRO do /admin01 e so os tres socios enxergam. Nao tem nada a ver com
+// o painel do seller — e ferramenta interna.
+//
+// Quem e "pessoa" aqui e o AdminAccount, que ja existe e ja tem `name` (o
+// primeiro nome do socio, usado na barra de presenca). Nao criei tabela de
+// usuario nova: seria uma segunda lista de socios pra manter em dia com a
+// primeira, e as duas discordariam no primeiro cadastro novo.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Board {
+  id        String   @id @default(cuid())
+  nome      String
+  /// Emoji ou letra que aparece no seletor de quadros. Curto de proposito.
+  icone     String   @default("")
+  /// Ordem na barra de quadros. Menor primeiro.
+  ordem     Int      @default(0)
+  /// Arquivado some da barra mas NAO apaga: quadro guarda decisao antiga e
+  /// apagar de vez costuma ser arrependimento.
+  arquivado Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  listas  BoardList[]
+  etiquetas BoardLabel[]
+
+  @@index([arquivado, ordem])
+}
+
+model BoardList {
+  id      String @id @default(cuid())
+  boardId String
+  board   Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  nome    String
+  ordem   Int    @default(0)
+  /// Cor da barrinha do topo da coluna. Vazio = neutra.
+  cor     String @default("")
+  /// Marca a coluna de "pronto": card que cai aqui e contado como concluido
+  /// nas metricas do topo. Sem isso "quantos terminamos essa semana" viraria
+  /// convencao verbal ("a ultima coluna e a de feito") que quebra no dia que
+  /// alguem reordena as colunas.
+  concluida Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  cards BoardCard[]
+
+  @@index([boardId, ordem])
+}
+
+model BoardCard {
+  id       String    @id @default(cuid())
+  listId   String
+  lista    BoardList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  titulo   String
+  /// Markdown simples (o front renderiza texto puro com quebras).
+  descricao String   @default("")
+  ordem    Int       @default(0)
+
+  /// Socio responsavel. Null = sem dono ainda — que e um estado legitimo
+  /// ("alguem pega isso"), nao um erro.
+  responsavelId String?
+  responsavel   AdminAccount? @relation("CardResponsavel", fields: [responsavelId], references: [id], onDelete: SetNull)
+
+  /// Quem criou. Fica pra saber de quem partiu a ideia sem precisar de log.
+  criadoPorId String?
+  criadoPor   AdminAccount? @relation("CardCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  /// 0 = sem prioridade, 1 = baixa, 2 = media, 3 = alta.
+  prioridade Int @default(0)
+
+  /// Prazo. Null = sem prazo.
+  prazo DateTime?
+
+  /// Momento em que o card entrou numa coluna `concluida`. Guardado no card
+  /// (e nao derivado da coluna) porque a coluna pode ser renomeada ou o card
+  /// pode voltar — e ai a data de conclusao original se perderia.
+  concluidoEm DateTime?
+
+  arquivado Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  etiquetas  BoardCardLabel[]
+  comentarios BoardComment[]
+  checklist  BoardChecklistItem[]
+
+  @@index([listId, ordem])
+  @@index([responsavelId])
+  @@index([arquivado])
+}
+
+model BoardLabel {
+  id      String @id @default(cuid())
+  boardId String
+  board   Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  nome    String
+  /// Chave de cor (nao hex): o tema claro/escuro resolve o tom no CSS.
+  cor     String @default("cinza")
+
+  cards BoardCardLabel[]
+
+  @@index([boardId])
+}
+
+/// N:N entre card e etiqueta.
+model BoardCardLabel {
+  cardId  String
+  card    BoardCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  labelId String
+  label   BoardLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, labelId])
+  @@index([labelId])
+}
+
+model BoardComment {
+  id     String    @id @default(cuid())
+  cardId String
+  card   BoardCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  texto  String
+  autorId String?
+  autor   AdminAccount? @relation("ComentarioAutor", fields: [autorId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([cardId, createdAt])
+}
+
+model BoardChecklistItem {
+  id     String    @id @default(cuid())
+  cardId String
+  card   BoardCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  texto  String
+  feito  Boolean   @default(false)
+  ordem  Int       @default(0)
+
+  @@index([cardId, ordem])
+}

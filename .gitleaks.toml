@@ -1,0 +1,30 @@
+# Gitleaks config — usa o set default + adiciona allowlist de falsos positivos.
+[extend]
+# Usa as regras built-in do gitleaks
+useDefault = true
+
+[allowlist]
+description = "Allowlist de strings que não são segredos reais"
+paths = [
+  # Skip auto-generated
+  '''node_modules''',
+  '''\.next''',
+  '''dist''',
+  '''build''',
+  # Skip arquivos de teste/exemplo
+  '''\.env\.example''',
+  '''README.*\.md''',
+  '''CHANGELOG\.md''',
+]
+regexes = [
+  # Placeholder strings reconhecíveis
+  '''(?i)(your|my|example|placeholder|dummy|test|fake|sample|xxx+|change[-_ ]?me)[-_]?(secret|key|password|token|api[-_]?key)''',
+  # Magic strings de docs
+  '''sk_test_[a-zA-Z0-9]{24,}''',
+  '''pk_test_[a-zA-Z0-9]{24,}''',
+]
+stopwords = [
+  "example",
+  "sample",
+  "test_",
+]

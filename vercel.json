@@ -1,0 +1,109 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/retry-webhooks",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/release-pending",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/release-retention",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/process-subscriptions",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/process-mass-campaigns",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/dispatch-utmify",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/release-paid-to-seller",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/fake-refunds",
+      "schedule": "0,30 * * * *"
+    },
+    {
+      "path": "/api/cron/acquirer-health",
+      "schedule": "0,30 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-custom-domains",
+      "schedule": "0,30 * * * *"
+    },
+    {
+      "path": "/api/cron/process-post-purchase",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/dispatch",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-pending",
+      "schedule": "0,30 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-withdrawals",
+      "schedule": "0,30 * * * *"
+    },
+    {
+      "path": "/api/cron/audit-safepix-balances",
+      "schedule": "0,30 * * * *"
+    },
+    {
+      "path": "/api/cron/neon-quota-check",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/scheduled-withdraw",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/unhide-nominal-orphans",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/pending-charge-retry",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/audit-provider-orphans",
+      "schedule": "0,30 * * * *"
+    },
+    {
+      "path": "/api/cron/auto-fix-fee-violations",
+      "schedule": "0,30 * * * *"
+    },
+    {
+      "path": "/api/cron/bot-funnel-resume",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/bot-health",
+      "schedule": "0,30 * * * *"
+    },
+    {
+      "path": "/api/cron/bot-analytics-cleanup",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/api-logs-cleanup",
+      "schedule": "20 4 * * *"
+    },
+    {
+      "path": "/api/cron/upload-parts-cleanup",
+      "schedule": "30 4 * * *"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "name": "Trilho Pagamentos — Gateway",
+  "short_name": "Trilho",
+  "description": "Receba PIX, Cartão, Apple Pay e Google Pay com segurança.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFFFF",
+  "theme_color": "#33D2D9",
+  "categories": ["finance", "business", "productivity"],
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/trilhopag-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/trilhopag-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Vendas",
+      "short_name": "Vendas",
+      "url": "/dashboard/vendas"
+    },
+    {
+      "name": "Saques",
+      "short_name": "Saques",
+      "url": "/dashboard/saques"
+    }
+  ]
+}

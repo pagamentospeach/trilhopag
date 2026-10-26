@@ -1,0 +1,2568 @@
+/* =========================================================
+   TRILHO — Theme overrides per skin
+   Applied via [data-theme="<key>"] on the dashboard wrapper.
+   Each theme overrides the dashboard surface colors but
+   keeps everything else (landing, /c/[slug], etc) untouched.
+   ========================================================= */
+
+[data-theme] {
+  --tp-bg: #050505;
+  --tp-fg: #fafafa;
+  --tp-muted: #71717a;
+  --tp-card: rgba(255, 255, 255, 0.02);
+  --tp-card-hover: rgba(255, 255, 255, 0.04);
+  --tp-border: rgba(255, 255, 255, 0.08);
+  --tp-border-strong: rgba(255, 255, 255, 0.12);
+  --tp-accent: #22d3ee;
+  --tp-accent-soft: rgba(34, 211, 238, 0.12);
+  --tp-accent-strong: rgba(34, 211, 238, 0.3);
+}
+
+/* ============ DAYLIGHT (o "white mode" do toggle do topbar) ============
+ *
+ * 06/08/2026 (davi): "adcione um icone de toogle dark mode / white mode que
+ * muda a aparencia do gateway de dark (padrao) para white!"
+ *
+ * COMO FUNCIONA — e por que mudou de abordagem:
+ *
+ * A versão antiga listava utility por utility (.text-zinc-400 { … }). Cobria
+ * umas 20 classes das ~2200 ocorrências de zinc/ciano que o dashboard usa, então
+ * qualquer tela nova nascia meio escura no claro e alguém tinha que voltar aqui
+ * pra remendar. Não escala.
+ *
+ * Agora inverto as VARIÁVEIS DE COR do Tailwind v4 no próprio wrapper. O v4
+ * compila `bg-black` pra `background-color: var(--color-black)`, `text-zinc-400`
+ * pra `var(--color-zinc-400)` e `bg-white/[0.02]` pra
+ * `color-mix(in oklab, var(--color-white) 2%, transparent)`. Redefinindo essas
+ * variáveis aqui, TODA a árvore abaixo de [data-theme="daylight"] vira clara de
+ * uma vez — inclusive tela que ainda nem foi escrita. Zero !important, zero
+ * lista de classes.
+ *
+ * A inversão é espelhada: zinc-950↔zinc-50, zinc-900↔zinc-100 e assim por
+ * diante, e white↔black. Isso faz o sistema "véu branco sobre fundo preto"
+ * (bg-white/[0.02] de card, border-white/[0.08] de borda) virar naturalmente
+ * "véu preto sobre fundo branco" — mesma hierarquia visual, invertida.
+ *
+ * Os tons -200/-300/-400 das paletas de destaque (cyan, red, amber, …) descem
+ * pros equivalentes -600/-700: eles são usados como TEXTO, e tom claro em
+ * fundo branco não se lê. Os -500+ ficam como estão.
+ */
+[data-theme="daylight"] {
+  /* --- primitivas: o eixo da inversão --- */
+  --color-black: #ffffff;
+  --color-white: #09090b;
+
+  --color-zinc-50: #09090b;
+  --color-zinc-100: #18181b;
+  --color-zinc-200: #27272a;
+  --color-zinc-300: #3f3f46;
+  --color-zinc-400: #52525b;
+  /* 08/08/2026: era #71717a, o espelho exato do zinc-500 do escuro. Sozinho
+   * sobre branco dava 4.83:1 e passava — mas `text-zinc-500` é o tom mudo de
+   * TODO rótulo secundário do painel, e rótulo secundário quase nunca fica
+   * sobre branco puro: fica dentro de um card `bg-white/[0.02]`, às vezes
+   * dentro de dois aninhados. Nessa pilha caía pra 4.43:1 e reprovava no AA
+   * (seção 27 do prompt de revamp pede contraste adequado). Medido: 4.84:1 na
+   * pilha dupla, e é o menor passo que resolve — a distância pro zinc-400
+   * (7.09:1) continua grande, então a hierarquia de texto não achata. */
+  --color-zinc-500: #6b6b73;
+  --color-zinc-600: #a1a1aa;
+  --color-zinc-700: #d4d4d8;
+  --color-zinc-800: #e4e4e7;
+  --color-zinc-900: #f4f4f5;
+  --color-zinc-950: #fafafa;
+
+  /* Mesma inversão pras escalas cinzas irmãs (usadas em telas pontuais). */
+  --color-neutral-50: #0a0a0a;
+  --color-neutral-100: #171717;
+  --color-neutral-200: #262626;
+  --color-neutral-300: #404040;
+  --color-neutral-400: #525252;
+  --color-neutral-600: #a3a3a3;
+  --color-neutral-700: #d4d4d4;
+  --color-neutral-800: #e5e5e5;
+  --color-neutral-900: #f5f5f5;
+  --color-neutral-950: #fafafa;
+
+  --color-slate-300: #334155;
+  --color-slate-400: #475569;
+  --color-slate-800: #e2e8f0;
+  --color-slate-900: #f1f5f9;
+  --color-slate-950: #f8fafc;
+
+  /* --- destaque: o ciano do Trilho ja desce pros tons escuros logo abaixo,
+     junto com as outras paletas de status --- */
+
+  /* --- paletas de status: tons claros descem pros escuros ---
+   *
+   * 08/08/2026: -200 e -300 passaram a cair no MESMO tom do -400 (o tier 700).
+   * Antes o -200 caía no 600 e o -300 no meio do caminho, preservando a
+   * gradação do escuro. Medindo os rótulos reais no claro, o 600 dava 2.7:1 e o
+   * intermediário 3.3–4.1:1 — os dois reprovam no AA, e era daí que vinham os
+   * "TXT — prova de propriedade" e "Seus produtos estão INATIVOS" ilegíveis.
+   *
+   * A gradação perdida não custa nada: no escuro o que separa -200 de -400 é
+   * brilho, e brilho é justamente o que não sobrevive à inversão. O -400 fica
+   * INTOCADO de propósito — é onde mora `text-cyan-400`, o acento da marca no
+   * painel inteiro; mexer nele mudaria a cara do tema claro todo, que não é o
+   * que foi pedido. */
+  --color-red-200: #b91c1c;
+  --color-red-300: #b91c1c;
+  --color-red-400: #b91c1c;
+  --color-amber-200: #92400e;
+  --color-amber-300: #92400e;
+  --color-amber-400: #b45309;
+  --color-yellow-200: #854d0e;
+  --color-yellow-300: #854d0e;
+  --color-yellow-400: #a16207;
+  --color-emerald-200: #047857;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #047857;
+  --color-green-200: #15803d;
+  --color-green-300: #15803d;
+  --color-green-400: #15803d;
+  --color-blue-200: #1d4ed8;
+  --color-blue-300: #1d4ed8;
+  --color-blue-400: #1d4ed8;
+  --color-sky-200: #0369a1;
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0369a1;
+  --color-cyan-200: #155e75;
+  --color-cyan-300: #155e75;
+  --color-cyan-400: #0e7490;
+  --color-teal-200: #0f766e;
+  --color-teal-300: #0f766e;
+  --color-teal-400: #0f766e;
+  --color-indigo-200: #4338ca;
+  --color-indigo-300: #4338ca;
+  --color-indigo-400: #4338ca;
+  --color-violet-200: #6d28d9;
+  --color-violet-300: #6d28d9;
+  --color-violet-400: #6d28d9;
+  --color-purple-200: #7e22ce;
+  --color-purple-300: #7e22ce;
+  --color-purple-400: #7e22ce;
+  --color-fuchsia-200: #a21caf;
+  --color-fuchsia-300: #a21caf;
+  --color-fuchsia-400: #a21caf;
+  --color-pink-200: #be185d;
+  --color-pink-300: #be185d;
+  --color-pink-400: #be185d;
+  --color-rose-200: #be123c;
+  --color-rose-300: #be123c;
+  --color-rose-400: #be123c;
+  --color-orange-200: #c2410c;
+  --color-orange-300: #c2410c;
+  --color-orange-400: #c2410c;
+
+  /* --- o tier -100/-50 das paletas de destaque ---
+   *
+   * 08/08/2026 (davi): "na aba X o texto está ilegível (erro somente no modo
+   * claro)", reportado em quatro telas diferentes. A causa era sempre a mesma e
+   * estava AQUI: a inversão parava no -200. Sobraram 107 usos de
+   * `text-<paleta>-100/-50` no painel — o tier mais claro de todos, escolhido
+   * justamente por ser o texto de MAIOR contraste sobre painel escuro
+   * (`bg-amber-400/[0.06] text-amber-100`). Sem inverter, no fundo branco ele
+   * continuava sendo um creme quase invisível dentro de um painel igualmente
+   * claro. É o mesmo bug em: guia de domínios, adquirentes, produtos/bots e o
+   * aviso "Como funciona" — não eram quatro bugs, era um.
+   *
+   * Vão pro tier -900, o mais ESCURO, e não pro -600 do -200. Parece exagero e
+   * não é: no escuro este é o tier de MAIOR ênfase, então no claro o
+   * equivalente é o mais escuro — a ordem se inverte junto com o fundo. Manter
+   * a gradação levaria -100 pro tier 500 (amber-500 no branco dá 2.1:1), que é
+   * o bug de novo.
+   *
+   * O tier foi MEDIDO, não chutado. Compondo o texto sobre o painel tingido
+   * real (`bg-amber-400/[0.06]` sobre branco), com o `/80` de opacidade que o
+   * código aplica em cima:
+   *
+   *     tier -600  →  2.3–2.7:1   reprova
+   *     tier -700  →  3.3–3.6:1   reprova
+   *     tier -800  →  4.2–4.4:1   reprova por pouco
+   *     tier -900  →  5.0–5.3:1   passa
+   *
+   * O `/80` é o que decide. Sem ele o -700 já bastaria, mas metade destes usos
+   * vem com opacidade e não dá pra caçar um por um.
+   *
+   * Seguro em massa: varri o app e NENHUM `text-X-50/100` mora sobre um
+   * `bg-X-400/500/600` sólido — se morasse, escurecer o texto o esconderia no
+   * próprio botão. Todos estão sobre véu translúcido. */
+  --color-red-50: #7f1d1d;
+  --color-red-100: #7f1d1d;
+  --color-amber-50: #78350f;
+  --color-amber-100: #78350f;
+  --color-yellow-50: #713f12;
+  --color-yellow-100: #713f12;
+  --color-emerald-50: #064e3b;
+  --color-emerald-100: #064e3b;
+  --color-green-50: #14532d;
+  --color-green-100: #14532d;
+  --color-blue-50: #1e3a8a;
+  --color-blue-100: #1e3a8a;
+  --color-sky-50: #0c4a6e;
+  --color-sky-100: #0c4a6e;
+  --color-cyan-50: #164e63;
+  --color-cyan-100: #164e63;
+  --color-teal-50: #134e4a;
+  --color-teal-100: #134e4a;
+  --color-indigo-50: #312e81;
+  --color-indigo-100: #312e81;
+  --color-violet-50: #4c1d95;
+  --color-violet-100: #4c1d95;
+  --color-purple-50: #581c87;
+  --color-purple-100: #581c87;
+  --color-fuchsia-50: #701a75;
+  --color-fuchsia-100: #701a75;
+  --color-pink-50: #831843;
+  --color-pink-100: #831843;
+  --color-rose-50: #881337;
+  --color-rose-100: #881337;
+  --color-orange-50: #7c2d12;
+  --color-orange-100: #7c2d12;
+
+  /* --- tokens próprios do gateway (--tp-*) --- */
+  --tp-bg: #fafafa;
+  --tp-fg: #09090b;
+  --tp-muted: #52525b;
+  --tp-card: #ffffff;
+  --tp-card-hover: #f4f4f5;
+  --tp-border: rgba(0, 0, 0, 0.08);
+  --tp-border-strong: rgba(0, 0, 0, 0.14);
+  /* 08/08/2026 (davi): "troque o verde pela seguinte cor: #33d2d9". O
+   * `#4d7c0f` era um verde-oliva, e o tema claro é o ÚNICO lugar onde ele
+   * aparecia — sobra de quando o acento do claro não seguia a marca. Quem lia
+   * este token era a animação de intro do painel, que no tema branco abria
+   * verde. O `-strong`, por ser borda/anel sobre fundo claro, usa o ciano
+   * escuro: o #33d2d9 a 30% sobre branco quase não se vê. */
+  --tp-accent: #33d2d9;
+  --tp-accent-soft: rgba(51, 210, 217, 0.12);
+  --tp-accent-strong: rgba(8, 145, 178, 0.35);
+
+  /* Rótulos de saída dos nós do construtor de funil. Ver globals.css pro
+   * porquê de serem variável. Descem pro tier 700/800 igual às classes: o
+   * fundo do rótulo é a própria cor a 13%, então sobre o canvas claro o texto
+   * precisa do tom escuro pra existir. */
+  --tp-port-warn: #92400e;
+  --tp-port-ok: #155e75;
+  --tp-port-bad: #991b1b;
+
+  background: linear-gradient(135deg, #ffffff 0%, #f4f4f5 100%) !important;
+  background-attachment: fixed !important;
+  color: var(--tp-fg);
+}
+
+/* Sombras: a escala do Tailwind é preta e some no escuro, mas no branco fica
+ * pesada demais. Suaviza. */
+[data-theme="daylight"] .shadow-2xl,
+[data-theme="daylight"] .shadow-xl {
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.18);
+}
+
+/* A malha decorativa de fundo é feita de linhas brancas — no branco não
+ * aparece e ainda lava o topo da página. */
+[data-theme="daylight"] .grid-bg { display: none; }
+
+/* O <body> fica FORA do wrapper que carrega o data-theme, então continuaria
+ * preto e apareceria como faixa escura no overscroll (elástico do iOS) e em
+ * página mais curta que a viewport. :has() alcança de dentro pra fora. */
+html:has([data-theme="daylight"]) body {
+  background: #fafafa;
+  color: #09090b;
+}
+
+/* ---------------------------------------------------------------------------
+ * DAYLIGHT — os buracos da inversão automática
+ *
+ * 08/08/2026 (davi): "No modo white o logo tem que ficar sem fundo! e varios
+ * textos nao aparecerem".
+ *
+ * A inversão por variável cobre tudo que o Tailwind compila pra
+ * `var(--color-*)`. O que ela NÃO alcança é o que foi escrito em hex na mão:
+ * `bg-[#070707]`, `style={{ background: "#18181b" }}` e afins. Essas
+ * superfícies continuavam PRETAS no modo claro — e como o `text-white` de
+ * dentro delas virou quase-preto pela inversão, o texto sumia. É exatamente
+ * o "varios textos nao aparecerem".
+ *
+ * Cada regra abaixo devolve a superfície pro claro. Como o texto já foi
+ * invertido, ele volta a se ler sozinho — não precisa mexer em nenhum
+ * componente.
+ * ------------------------------------------------------------------------- */
+
+/* Superfícies escuras escritas em hex arbitrário (modais de taxas da rede,
+ * quadro de funil, builder de checkout). */
+[data-theme="daylight"] .bg-\[\#070707\],
+[data-theme="daylight"] .bg-\[\#0a0a0a\],
+[data-theme="daylight"] .bg-\[\#0a0a0c\] {
+  background-color: #ffffff;
+}
+
+/* Sombras "de fundo preto" (0 24px 80px rgba(0,0,0,.9)) viram borrão sujo no
+ * claro. */
+[data-theme="daylight"] .shadow-\[0_24px_80px_-20px_rgba\(0\2c 0\2c 0\2c 0\.9\)\] {
+  box-shadow: 0 24px 80px -24px rgba(0, 0, 0, 0.22);
+}
+
+/* Faltavam os tons 700 da escala slate (o dashboard usa border-slate-700 e
+ * bg-slate-800 em duas telas). O resto da escala slate só aparece nas páginas
+ * de auth e na landing, que ficam FORA do wrapper [data-theme] — a inversão
+ * não as alcança, e é isso mesmo que se quer: elas já nascem claras. */
+[data-theme="daylight"] {
+  --color-slate-700: #cbd5e1;
+}
+
+/* Um <select> nativo herda a cor do texto mas NÃO o fundo do popup em alguns
+ * navegadores: no claro isso dava lista branca com texto branco. */
+[data-theme="daylight"] select option {
+  background-color: #ffffff;
+  color: #09090b;
+}
+
+/* Placeholder invertido fica escuro demais e se confunde com valor digitado. */
+[data-theme="daylight"] ::placeholder {
+  color: #9ca3af;
+  opacity: 1;
+}
+
+/* Scrollbar: a escura desaparece na página branca. */
+[data-theme="daylight"] ::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.18);
+}
+
+/* LOGO SEM FUNDO NO MODO WHITE
+ *
+ * Os PNGs originais são desenhados sobre um retângulo/disco #0a0a0a — no
+ * claro isso vira uma caixa preta boiando no layout. As variantes `-light`
+ * (geradas a partir dos mesmos arquivos, ver public/) têm fundo transparente
+ * e o "Trilho" em tinta escura.
+ *
+ * A troca é por CSS de propósito: a logo aparece em ~6 telas diferentes, cada
+ * uma com <img src> na mão. Trocando aqui, qualquer tela nova já nasce certa
+ * e nenhuma delas precisa saber que tema está ativo. */
+[data-theme="daylight"] img[src="/trilhopag-logo.png"] {
+  content: url("/trilhopag-logo-light.png");
+}
+[data-theme="daylight"] img[src="/trilhopag-logo2.png"] {
+  content: url("/trilhopag-logo2-light.png");
+}
+
+/* ============ NEON (ex-gamer) ============ */
+[data-theme="gamer"] {
+  --tp-bg: #120025;
+  --tp-fg: #f5e7ff;
+  --tp-muted: #a78bfa;
+  --tp-card: rgba(217, 70, 239, 0.08);
+  --tp-card-hover: rgba(217, 70, 239, 0.14);
+  --tp-border: rgba(217, 70, 239, 0.25);
+  --tp-accent: #d946ef;
+  --tp-accent-soft: rgba(217, 70, 239, 0.15);
+  --tp-accent-strong: rgba(217, 70, 239, 0.45);
+
+  background:
+    radial-gradient(ellipse 80% 50% at 0% 0%, rgba(217, 70, 239, 0.25), transparent),
+    radial-gradient(ellipse 80% 50% at 100% 100%, rgba(34, 211, 238, 0.2), transparent),
+    #120025 !important;
+  background-attachment: fixed !important;
+  color: var(--tp-fg);
+}
+[data-theme="gamer"] .text-cyan-300,
+[data-theme="gamer"] .text-cyan-400 { color: var(--tp-accent) !important; text-shadow: 0 0 10px rgba(217, 70, 239, 0.6); }
+[data-theme="gamer"] .bg-cyan-400 { background: linear-gradient(135deg, #d946ef, #22d3ee) !important; color: #fff !important; box-shadow: 0 0 24px rgba(217, 70, 239, 0.5); }
+[data-theme="gamer"] .bg-cyan-300 { background: #f0abfc !important; }
+[data-theme="gamer"] .bg-cyan-400\/10,
+[data-theme="gamer"] .bg-cyan-400\/15,
+[data-theme="gamer"] .bg-cyan-400\/\[0\.04\],
+[data-theme="gamer"] .bg-cyan-400\/\[0\.06\] { background: var(--tp-accent-soft) !important; box-shadow: 0 0 24px rgba(217, 70, 239, 0.2) inset; }
+[data-theme="gamer"] .border-cyan-400\/20,
+[data-theme="gamer"] .border-cyan-400\/30,
+[data-theme="gamer"] .border-cyan-400\/40 { border-color: var(--tp-accent-strong) !important; box-shadow: 0 0 16px rgba(217, 70, 239, 0.25); }
+[data-theme="gamer"] .border-white\/\[0\.06\],
+[data-theme="gamer"] .border-white\/\[0\.08\] { border-color: rgba(217, 70, 239, 0.2) !important; }
+[data-theme="gamer"] .text-blue-300 { color: #67e8f9 !important; }
+
+/* ============ GLASS (iPhone-style) ============ */
+[data-theme="glass"] {
+  --tp-bg: #0f0524;
+  --tp-fg: #f0f0ff;
+  --tp-muted: #a5a5d0;
+  --tp-card: rgba(168, 85, 247, 0.10);
+  --tp-card-hover: rgba(168, 85, 247, 0.16);
+  --tp-border: rgba(168, 85, 247, 0.20);
+  --tp-border-strong: rgba(168, 85, 247, 0.35);
+  --tp-accent: #a855f7;
+  --tp-accent-soft: rgba(168, 85, 247, 0.18);
+  --tp-accent-strong: rgba(168, 85, 247, 0.4);
+
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(168, 85, 247, 0.35), transparent 60%),
+    radial-gradient(ellipse at 100% 0%, rgba(34, 211, 238, 0.30), transparent 55%),
+    radial-gradient(ellipse at 50% 100%, rgba(74, 222, 128, 0.22), transparent 55%),
+    linear-gradient(180deg, #0f0524 0%, #1a1f3a 60%, #0a2e3a 100%) !important;
+  background-attachment: fixed !important;
+  color: var(--tp-fg);
+}
+[data-theme="glass"] .bg-black,
+[data-theme="glass"] .bg-black\/40,
+[data-theme="glass"] .bg-black\/30,
+[data-theme="glass"] .bg-white\/\[0\.02\],
+[data-theme="glass"] .bg-white\/\[0\.03\],
+[data-theme="glass"] .bg-white\/\[0\.04\] {
+  background: var(--tp-card) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+/* Fundo é ESCURO (roxo #0f0524) — cor cresce em contraste conforme sobe o
+ * número (zinc-300 quase branco, zinc-800 mid-tone). Antes: zinc-300/400/500
+ * estava #3a3a3c/#6e6e73/#86868b (cinza ESCURO em fundo escuro = invisível).
+ * Corrigido 17/07/2026 (davi). */
+[data-theme="glass"] .text-white,
+[data-theme="glass"] .text-zinc-100,
+[data-theme="glass"] .text-zinc-200 { color: var(--tp-fg) !important; }
+[data-theme="glass"] .text-zinc-300 { color: #e9d5ff !important; }
+[data-theme="glass"] .text-zinc-400 { color: #d8b4fe !important; }
+[data-theme="glass"] .text-zinc-500 { color: #c4b5fd !important; }
+[data-theme="glass"] .text-zinc-600 { color: #a78bfa !important; }
+[data-theme="glass"] .text-zinc-700,
+[data-theme="glass"] .text-zinc-800 { color: #8b5cf6 !important; }
+[data-theme="glass"] .text-cyan-300,
+[data-theme="glass"] .text-cyan-400 { color: var(--tp-accent) !important; }
+[data-theme="glass"] .bg-cyan-400 { background: var(--tp-accent) !important; color: #fff !important; box-shadow: 0 6px 20px rgba(10, 132, 255, 0.4); }
+[data-theme="glass"] .bg-cyan-400\/10,
+[data-theme="glass"] .bg-cyan-400\/15,
+[data-theme="glass"] .bg-cyan-400\/\[0\.04\],
+[data-theme="glass"] .bg-cyan-400\/\[0\.06\] { background: var(--tp-accent-soft) !important; }
+[data-theme="glass"] .border-white\/\[0\.06\],
+[data-theme="glass"] .border-white\/\[0\.08\],
+[data-theme="glass"] .border-white\/10 { border-color: var(--tp-border) !important; }
+[data-theme="glass"] .border-cyan-400\/20,
+[data-theme="glass"] .border-cyan-400\/30 { border-color: var(--tp-accent-strong) !important; }
+[data-theme="glass"] aside { background: var(--tp-card) !important; backdrop-filter: blur(30px) saturate(200%); }
+[data-theme="glass"] header.bg-black\/30,
+[data-theme="glass"] header.bg-black\/60 {
+  background: var(--tp-card) !important;
+  border-color: var(--tp-border) !important;
+  backdrop-filter: blur(30px) saturate(200%);
+  -webkit-backdrop-filter: blur(30px) saturate(200%);
+}
+[data-theme="glass"] .grid-bg { display: none; }
+[data-theme="glass"] .rounded-2xl,
+[data-theme="glass"] .rounded-xl { border-radius: 18px !important; }
+
+/* ============ SUNSET ============ */
+[data-theme="sunset"] {
+  --tp-bg: #2a0a0a;
+  --tp-fg: #fed7aa;
+  --tp-muted: #fb923c;
+  --tp-card: #3d1410;
+  --tp-card-hover: #4d1b16;
+  --tp-border: rgba(249, 115, 22, 0.22);
+  --tp-accent: #f97316;
+  --tp-accent-soft: rgba(249, 115, 22, 0.14);
+  --tp-accent-strong: rgba(249, 115, 22, 0.4);
+
+  background:
+    radial-gradient(ellipse 90% 60% at 100% 0%, rgba(249, 115, 22, 0.25), transparent),
+    radial-gradient(ellipse 90% 60% at 0% 100%, rgba(220, 38, 38, 0.18), transparent),
+    #2a0a0a !important;
+  background-attachment: fixed !important;
+  color: var(--tp-fg);
+}
+[data-theme="sunset"] .text-cyan-300,
+[data-theme="sunset"] .text-cyan-400 { color: var(--tp-accent) !important; }
+[data-theme="sunset"] .bg-cyan-400 { background: linear-gradient(135deg, #f97316, #dc2626) !important; color: #fff !important; box-shadow: 0 4px 16px rgba(249, 115, 22, 0.4); }
+[data-theme="sunset"] .bg-cyan-400\/10,
+[data-theme="sunset"] .bg-cyan-400\/15 { background: var(--tp-accent-soft) !important; }
+[data-theme="sunset"] .bg-white\/\[0\.02\],
+[data-theme="sunset"] .bg-white\/\[0\.03\],
+[data-theme="sunset"] .bg-white\/\[0\.04\] { background: var(--tp-card) !important; }
+[data-theme="sunset"] .border-cyan-400\/30,
+[data-theme="sunset"] .border-cyan-400\/40 { border-color: var(--tp-accent-strong) !important; }
+[data-theme="sunset"] .border-white\/\[0\.06\],
+[data-theme="sunset"] .border-white\/\[0\.08\] { border-color: rgba(249, 115, 22, 0.15) !important; }
+
+/* ============ MATRIX ============ */
+[data-theme="matrix"] {
+  --tp-bg: #000000;
+  --tp-fg: #00ff41;
+  --tp-muted: #008f2a;
+  --tp-card: #001a08;
+  --tp-card-hover: #002310;
+  --tp-border: rgba(0, 255, 65, 0.25);
+  --tp-accent: #00ff41;
+  --tp-accent-soft: rgba(0, 255, 65, 0.12);
+  --tp-accent-strong: rgba(0, 255, 65, 0.5);
+
+  background: #000 !important;
+  color: var(--tp-fg) !important;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace !important;
+}
+[data-theme="matrix"] .text-white,
+[data-theme="matrix"] .text-zinc-100,
+[data-theme="matrix"] .text-zinc-200,
+[data-theme="matrix"] .text-zinc-300 { color: var(--tp-fg) !important; }
+[data-theme="matrix"] .text-zinc-400 { color: #00b82e !important; }
+[data-theme="matrix"] .text-zinc-500 { color: #008f2a !important; }
+[data-theme="matrix"] .text-cyan-300,
+[data-theme="matrix"] .text-cyan-400 { color: var(--tp-accent) !important; text-shadow: 0 0 12px rgba(0, 255, 65, 0.8); }
+[data-theme="matrix"] .bg-cyan-400 { background: var(--tp-accent) !important; color: #000 !important; box-shadow: 0 0 20px rgba(0, 255, 65, 0.5); font-weight: bold; }
+[data-theme="matrix"] .bg-cyan-400\/10,
+[data-theme="matrix"] .bg-cyan-400\/15 { background: var(--tp-accent-soft) !important; }
+[data-theme="matrix"] .bg-white\/\[0\.02\],
+[data-theme="matrix"] .bg-white\/\[0\.03\],
+[data-theme="matrix"] .bg-white\/\[0\.04\] { background: var(--tp-card) !important; }
+[data-theme="matrix"] .border-white\/\[0\.06\],
+[data-theme="matrix"] .border-white\/\[0\.08\],
+[data-theme="matrix"] .border-white\/10 { border-color: var(--tp-border) !important; }
+[data-theme="matrix"] .border-cyan-400\/30,
+[data-theme="matrix"] .border-cyan-400\/40 { border-color: var(--tp-accent-strong) !important; }
+
+/* ============ OCEAN ============ */
+[data-theme="ocean"] {
+  --tp-bg: #001a2e;
+  --tp-fg: #cffafe;
+  --tp-muted: #38bdf8;
+  --tp-card: #002e4d;
+  --tp-card-hover: #003d66;
+  --tp-border: rgba(34, 211, 238, 0.22);
+  --tp-accent: #22d3ee;
+  --tp-accent-soft: rgba(34, 211, 238, 0.14);
+  --tp-accent-strong: rgba(34, 211, 238, 0.45);
+
+  background:
+    radial-gradient(ellipse 90% 50% at 50% 100%, rgba(34, 211, 238, 0.18), transparent 70%),
+    linear-gradient(180deg, #001a2e 0%, #003049 100%) !important;
+  background-attachment: fixed !important;
+  color: var(--tp-fg);
+}
+[data-theme="ocean"] .text-cyan-300,
+[data-theme="ocean"] .text-cyan-400 { color: var(--tp-accent) !important; }
+[data-theme="ocean"] .bg-cyan-400 { background: linear-gradient(135deg, #22d3ee, #0891b2) !important; color: #000 !important; font-weight: 600; }
+[data-theme="ocean"] .bg-cyan-400\/10,
+[data-theme="ocean"] .bg-cyan-400\/15 { background: var(--tp-accent-soft) !important; }
+[data-theme="ocean"] .bg-white\/\[0\.02\],
+[data-theme="ocean"] .bg-white\/\[0\.03\],
+[data-theme="ocean"] .bg-white\/\[0\.04\] { background: var(--tp-card) !important; }
+[data-theme="ocean"] .border-cyan-400\/30,
+[data-theme="ocean"] .border-cyan-400\/40 { border-color: var(--tp-accent-strong) !important; }
+[data-theme="ocean"] .border-white\/\[0\.06\],
+[data-theme="ocean"] .border-white\/\[0\.08\] { border-color: rgba(34, 211, 238, 0.15) !important; }
+
+/* ============ MONO (ex-minimal) ============ */
+[data-theme="minimal"] {
+  --tp-bg: #262626;
+  --tp-fg: #fafafa;
+  --tp-muted: #a3a3a3;
+  --tp-card: #404040;
+  --tp-card-hover: #525252;
+  --tp-border: rgba(255, 255, 255, 0.1);
+  --tp-accent: #a3a3a3;
+  --tp-accent-soft: rgba(255, 255, 255, 0.08);
+  --tp-accent-strong: rgba(255, 255, 255, 0.3);
+
+  background: var(--tp-bg) !important;
+  color: var(--tp-fg);
+}
+[data-theme="minimal"] .text-cyan-300,
+[data-theme="minimal"] .text-cyan-400 { color: #fafafa !important; font-weight: 600; }
+[data-theme="minimal"] .bg-cyan-400 { background: #fafafa !important; color: #18181b !important; }
+[data-theme="minimal"] .bg-cyan-300 { background: #e5e5e5 !important; }
+[data-theme="minimal"] .bg-cyan-400\/10,
+[data-theme="minimal"] .bg-cyan-400\/15 { background: var(--tp-accent-soft) !important; }
+[data-theme="minimal"] .bg-white\/\[0\.02\],
+[data-theme="minimal"] .bg-white\/\[0\.03\],
+[data-theme="minimal"] .bg-white\/\[0\.04\] { background: var(--tp-card) !important; }
+[data-theme="minimal"] .border-white\/\[0\.06\],
+[data-theme="minimal"] .border-white\/\[0\.08\],
+[data-theme="minimal"] .border-white\/10 { border-color: var(--tp-border) !important; }
+[data-theme="minimal"] .border-cyan-400\/30,
+[data-theme="minimal"] .border-cyan-400\/40 { border-color: var(--tp-accent-strong) !important; }
+
+/* =========================================================
+   BG PATTERNS
+   IMPORTANT: data-bg-pattern e .bp-bg estão no MESMO elemento,
+   então o seletor precisa ser .bp-bg[data-bg-pattern="X"] (sem espaço).
+   ========================================================= */
+.bp-bg {
+  position: relative;
+}
+.bp-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bp-bg[data-bg-pattern="grid"]::before {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, #000 30%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, #000 30%, transparent 100%);
+}
+.bp-bg[data-bg-pattern="dots"]::before {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1.2px, transparent 1.2px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(180deg, #000 0%, transparent 80%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 80%);
+}
+.bp-bg[data-bg-pattern="noise"]::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.5;
+}
+.bp-bg[data-bg-pattern="waves"]::before {
+  background-image:
+    radial-gradient(ellipse 60% 40% at 15% 20%, rgba(34, 211, 238, 0.15), transparent 60%),
+    radial-gradient(ellipse 70% 50% at 85% 40%, rgba(132, 204, 22, 0.12), transparent 60%),
+    radial-gradient(ellipse 50% 30% at 50% 90%, rgba(34, 211, 238, 0.1), transparent 60%);
+}
+.bp-bg[data-bg-pattern="mesh"]::before {
+  background:
+    radial-gradient(circle at 25% 25%, rgba(34, 211, 238, 0.4) 0.8px, transparent 1.5px) 0 0 / 30px 30px,
+    radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.1) 0.8px, transparent 1.5px) 0 0 / 40px 40px;
+  opacity: 0.4;
+}
+.bp-bg[data-bg-pattern="none"]::before {
+  display: none;
+}
+
+/* Light themes: usar tinta escura nos padrões ao invés de branca */
+[data-theme="daylight"].bp-bg[data-bg-pattern="grid"]::before,
+[data-theme="minimal"].bp-bg[data-bg-pattern="grid"]::before,
+[data-theme="glass"].bp-bg[data-bg-pattern="grid"]::before {
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+}
+[data-theme="daylight"].bp-bg[data-bg-pattern="dots"]::before,
+[data-theme="minimal"].bp-bg[data-bg-pattern="dots"]::before,
+[data-theme="glass"].bp-bg[data-bg-pattern="dots"]::before {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.08) 1.2px, transparent 1.2px);
+}
+
+
+
+/* ============================================================
+ *  TEMAS CULTURAIS — mudam fortemente cores, acentos e padrão de fundo
+ *  Overrides agressivos pra que TUDO mude visualmente.
+ * ============================================================ */
+
+[data-theme="freefire"] .bg-black,
+[data-theme="freefire"] .bg-black\/30,
+[data-theme="freefire"] .bg-black\/40,
+[data-theme="freefire"] .bg-black\/60,
+[data-theme="freefire"] .bg-white\/\[0\.02\],
+[data-theme="freefire"] .bg-white\/\[0\.04\],
+[data-theme="freefire"] .bg-white\/\[0\.05\],
+[data-theme="freefire"] .bg-white\/\[0\.06\] { background: var(--tp-card) !important; }
+[data-theme="freefire"] .border-white\/\[0\.04\],
+[data-theme="freefire"] .border-white\/\[0\.06\],
+[data-theme="freefire"] .border-white\/\[0\.08\],
+[data-theme="freefire"] .border-white\/\[0\.12\] { border-color: rgba(255, 87, 34, 0.3) !important; }
+[data-theme="freefire"] .bg-cyan-400 { background: var(--tp-accent) !important; color: #fff !important; }
+[data-theme="freefire"] .bg-cyan-400\/15,
+[data-theme="freefire"] .bg-cyan-400\/20 { background: var(--tp-accent-soft) !important; }
+[data-theme="freefire"] .text-cyan-300,
+[data-theme="freefire"] .text-cyan-400 { color: #ff8a3d !important; }
+[data-theme="freefire"] .border-cyan-400\/30,
+[data-theme="freefire"] .border-cyan-400\/40 { border-color: rgba(255, 87, 34, 0.5) !important; }
+
+[data-theme="fortnite"] .bg-black,
+[data-theme="fortnite"] .bg-black\/30,
+[data-theme="fortnite"] .bg-black\/40,
+[data-theme="fortnite"] .bg-black\/60,
+[data-theme="fortnite"] .bg-white\/\[0\.02\],
+[data-theme="fortnite"] .bg-white\/\[0\.04\],
+[data-theme="fortnite"] .bg-white\/\[0\.05\],
+[data-theme="fortnite"] .bg-white\/\[0\.06\] { background: var(--tp-card) !important; }
+[data-theme="fortnite"] .border-white\/\[0\.04\],
+[data-theme="fortnite"] .border-white\/\[0\.06\],
+[data-theme="fortnite"] .border-white\/\[0\.08\],
+[data-theme="fortnite"] .border-white\/\[0\.12\] { border-color: rgba(255, 214, 10, 0.25) !important; }
+[data-theme="fortnite"] .bg-cyan-400 { background: var(--tp-accent) !important; color: var(--tp-bg) !important; }
+[data-theme="fortnite"] .bg-cyan-400\/15,
+[data-theme="fortnite"] .bg-cyan-400\/20 { background: var(--tp-accent-soft) !important; }
+[data-theme="fortnite"] .text-cyan-300,
+[data-theme="fortnite"] .text-cyan-400 { color: #ffd60a !important; }
+[data-theme="fortnite"] .border-cyan-400\/30,
+[data-theme="fortnite"] .border-cyan-400\/40 { border-color: rgba(255, 214, 10, 0.5) !important; }
+
+[data-theme="simpsons"] .bg-black,
+[data-theme="simpsons"] .bg-black\/30,
+[data-theme="simpsons"] .bg-black\/40,
+[data-theme="simpsons"] .bg-black\/60,
+[data-theme="simpsons"] .bg-white\/\[0\.02\],
+[data-theme="simpsons"] .bg-white\/\[0\.04\],
+[data-theme="simpsons"] .bg-white\/\[0\.05\],
+[data-theme="simpsons"] .bg-white\/\[0\.06\] { background: rgba(255, 217, 15, 0.08) !important; }
+[data-theme="simpsons"] .border-white\/\[0\.06\],
+[data-theme="simpsons"] .border-white\/\[0\.08\],
+[data-theme="simpsons"] .border-white\/\[0\.12\] { border-color: rgba(255, 217, 15, 0.35) !important; }
+[data-theme="simpsons"] .bg-cyan-400 { background: var(--tp-accent) !important; color: var(--tp-bg) !important; }
+[data-theme="simpsons"] .bg-cyan-400\/15,
+[data-theme="simpsons"] .bg-cyan-400\/20 { background: var(--tp-accent-soft) !important; }
+[data-theme="simpsons"] .text-cyan-300,
+[data-theme="simpsons"] .text-cyan-400 { color: #ffd90f !important; }
+[data-theme="simpsons"] .border-cyan-400\/30,
+[data-theme="simpsons"] .border-cyan-400\/40 { border-color: rgba(255, 217, 15, 0.5) !important; }
+
+[data-theme="bobesponja"] .bg-black,
+[data-theme="bobesponja"] .bg-black\/30,
+[data-theme="bobesponja"] .bg-black\/40,
+[data-theme="bobesponja"] .bg-black\/60,
+[data-theme="bobesponja"] .bg-white\/\[0\.02\],
+[data-theme="bobesponja"] .bg-white\/\[0\.04\],
+[data-theme="bobesponja"] .bg-white\/\[0\.05\],
+[data-theme="bobesponja"] .bg-white\/\[0\.06\] { background: rgba(255, 216, 0, 0.12) !important; }
+[data-theme="bobesponja"] .border-white\/\[0\.06\],
+[data-theme="bobesponja"] .border-white\/\[0\.08\],
+[data-theme="bobesponja"] .border-white\/\[0\.12\] { border-color: rgba(255, 216, 0, 0.4) !important; }
+[data-theme="bobesponja"] .bg-cyan-400 { background: var(--tp-accent) !important; color: #003e66 !important; }
+[data-theme="bobesponja"] .bg-cyan-400\/15,
+[data-theme="bobesponja"] .bg-cyan-400\/20 { background: var(--tp-accent-soft) !important; }
+[data-theme="bobesponja"] .text-cyan-300,
+[data-theme="bobesponja"] .text-cyan-400 { color: #ffd800 !important; }
+[data-theme="bobesponja"] .border-cyan-400\/30,
+[data-theme="bobesponja"] .border-cyan-400\/40 { border-color: rgba(255, 216, 0, 0.6) !important; }
+
+[data-theme="valorant"] .bg-black,
+[data-theme="valorant"] .bg-black\/30,
+[data-theme="valorant"] .bg-black\/40,
+[data-theme="valorant"] .bg-black\/60,
+[data-theme="valorant"] .bg-white\/\[0\.02\],
+[data-theme="valorant"] .bg-white\/\[0\.04\],
+[data-theme="valorant"] .bg-white\/\[0\.05\],
+[data-theme="valorant"] .bg-white\/\[0\.06\] { background: rgba(255, 70, 85, 0.06) !important; }
+[data-theme="valorant"] .border-white\/\[0\.04\],
+[data-theme="valorant"] .border-white\/\[0\.06\],
+[data-theme="valorant"] .border-white\/\[0\.08\],
+[data-theme="valorant"] .border-white\/\[0\.12\] { border-color: rgba(255, 70, 85, 0.25) !important; }
+[data-theme="valorant"] .bg-cyan-400 { background: var(--tp-accent) !important; color: #fff !important; }
+[data-theme="valorant"] .bg-cyan-400\/15,
+[data-theme="valorant"] .bg-cyan-400\/20 { background: var(--tp-accent-soft) !important; }
+[data-theme="valorant"] .text-cyan-300,
+[data-theme="valorant"] .text-cyan-400 { color: #ff4655 !important; }
+[data-theme="valorant"] .border-cyan-400\/30,
+[data-theme="valorant"] .border-cyan-400\/40 { border-color: rgba(255, 70, 85, 0.5) !important; }
+
+[data-theme="steven"] .bg-black,
+[data-theme="steven"] .bg-black\/30,
+[data-theme="steven"] .bg-black\/40,
+[data-theme="steven"] .bg-black\/60,
+[data-theme="steven"] .bg-white\/\[0\.02\],
+[data-theme="steven"] .bg-white\/\[0\.04\],
+[data-theme="steven"] .bg-white\/\[0\.05\],
+[data-theme="steven"] .bg-white\/\[0\.06\] { background: rgba(255, 105, 180, 0.08) !important; }
+[data-theme="steven"] .border-white\/\[0\.06\],
+[data-theme="steven"] .border-white\/\[0\.08\],
+[data-theme="steven"] .border-white\/\[0\.12\] { border-color: rgba(255, 105, 180, 0.3) !important; }
+[data-theme="steven"] .bg-cyan-400 { background: var(--tp-accent) !important; color: #fff !important; }
+[data-theme="steven"] .bg-cyan-400\/15,
+[data-theme="steven"] .bg-cyan-400\/20 { background: var(--tp-accent-soft) !important; }
+[data-theme="steven"] .text-cyan-300,
+[data-theme="steven"] .text-cyan-400 { color: #ff89c8 !important; }
+[data-theme="steven"] .border-cyan-400\/30,
+[data-theme="steven"] .border-cyan-400\/40 { border-color: rgba(255, 105, 180, 0.5) !important; }
+
+[data-theme="mariobros"] .bg-black,
+[data-theme="mariobros"] .bg-black\/30,
+[data-theme="mariobros"] .bg-black\/40,
+[data-theme="mariobros"] .bg-black\/60,
+[data-theme="mariobros"] .bg-white\/\[0\.02\],
+[data-theme="mariobros"] .bg-white\/\[0\.04\],
+[data-theme="mariobros"] .bg-white\/\[0\.05\],
+[data-theme="mariobros"] .bg-white\/\[0\.06\] { background: rgba(229, 57, 53, 0.1) !important; }
+[data-theme="mariobros"] .border-white\/\[0\.06\],
+[data-theme="mariobros"] .border-white\/\[0\.08\],
+[data-theme="mariobros"] .border-white\/\[0\.12\] { border-color: rgba(229, 57, 53, 0.35) !important; }
+[data-theme="mariobros"] .bg-cyan-400 { background: var(--tp-accent) !important; color: #fff !important; }
+[data-theme="mariobros"] .bg-cyan-400\/15,
+[data-theme="mariobros"] .bg-cyan-400\/20 { background: var(--tp-accent-soft) !important; }
+[data-theme="mariobros"] .text-cyan-300,
+[data-theme="mariobros"] .text-cyan-400 { color: #ff5252 !important; }
+[data-theme="mariobros"] .border-cyan-400\/30,
+[data-theme="mariobros"] .border-cyan-400\/40 { border-color: rgba(229, 57, 53, 0.55) !important; }
+
+[data-theme="naruto"] .bg-black,
+[data-theme="naruto"] .bg-black\/30,
+[data-theme="naruto"] .bg-black\/40,
+[data-theme="naruto"] .bg-black\/60,
+[data-theme="naruto"] .bg-white\/\[0\.02\],
+[data-theme="naruto"] .bg-white\/\[0\.04\],
+[data-theme="naruto"] .bg-white\/\[0\.05\],
+[data-theme="naruto"] .bg-white\/\[0\.06\] { background: rgba(255, 107, 0, 0.08) !important; }
+[data-theme="naruto"] .border-white\/\[0\.04\],
+[data-theme="naruto"] .border-white\/\[0\.06\],
+[data-theme="naruto"] .border-white\/\[0\.08\],
+[data-theme="naruto"] .border-white\/\[0\.12\] { border-color: rgba(255, 107, 0, 0.25) !important; }
+[data-theme="naruto"] .bg-cyan-400 { background: var(--tp-accent) !important; color: #fff !important; }
+[data-theme="naruto"] .bg-cyan-400\/15,
+[data-theme="naruto"] .bg-cyan-400\/20 { background: var(--tp-accent-soft) !important; }
+[data-theme="naruto"] .text-cyan-300,
+[data-theme="naruto"] .text-cyan-400 { color: #ff9248 !important; }
+[data-theme="naruto"] .border-cyan-400\/30,
+[data-theme="naruto"] .border-cyan-400\/40 { border-color: rgba(255, 107, 0, 0.5) !important; }
+
+/* ============ Cores base por tema (fundo + variáveis) ============ */
+[data-theme="freefire"] {
+  --tp-bg: #1a0500;
+  --tp-card: rgba(255, 87, 34, 0.08);
+  --tp-fg: #ffe0b2;
+  --tp-accent: #ff5722;
+  --tp-accent-soft: rgba(255, 87, 34, 0.2);
+  background: radial-gradient(ellipse at top, #4d1c00 0%, #1a0500 70%) !important;
+}
+[data-theme="fortnite"] {
+  --tp-bg: #1b0a45;
+  --tp-card: rgba(255, 214, 10, 0.06);
+  --tp-fg: #fff8c2;
+  --tp-accent: #ffd60a;
+  --tp-accent-soft: rgba(255, 214, 10, 0.2);
+  background: radial-gradient(ellipse at top, #4c2d9b 0%, #1b0a45 70%) !important;
+}
+[data-theme="simpsons"] {
+  --tp-bg: #1f3a6e;
+  --tp-card: rgba(255, 217, 15, 0.08);
+  --tp-fg: #fffbe6;
+  --tp-accent: #ffd90f;
+  --tp-accent-soft: rgba(255, 217, 15, 0.2);
+  background: linear-gradient(180deg, #3268c8 0%, #1f3a6e 100%) !important;
+}
+[data-theme="bobesponja"] {
+  --tp-bg: #01579b;
+  --tp-card: rgba(255, 193, 7, 0.14);
+  --tp-fg: #fff9c4;
+  --tp-accent: #ffc107;
+  --tp-accent-soft: rgba(255, 193, 7, 0.25);
+  background:
+    radial-gradient(circle at 20% 80%, rgba(255, 193, 7, 0.18), transparent 50%),
+    radial-gradient(circle at 80% 30%, rgba(255, 235, 59, 0.14), transparent 60%),
+    linear-gradient(180deg, #0277bd 0%, #01579b 100%) !important;
+}
+[data-theme="valorant"] {
+  --tp-bg: #0f1923;
+  --tp-card: rgba(255, 70, 85, 0.06);
+  --tp-fg: #ece8e1;
+  --tp-accent: #ff4655;
+  --tp-accent-soft: rgba(255, 70, 85, 0.2);
+  background: linear-gradient(135deg, #0f1923 0%, #1a242f 50%, #0f1923 100%) !important;
+}
+[data-theme="steven"] {
+  --tp-bg: #1e0f2e;
+  --tp-card: rgba(255, 105, 180, 0.08);
+  --tp-fg: #fce7ff;
+  --tp-accent: #ff69b4;
+  --tp-accent-soft: rgba(255, 105, 180, 0.2);
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 105, 180, 0.25), transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(132, 191, 255, 0.25), transparent 50%),
+    linear-gradient(135deg, #1e0f2e 0%, #3a1c5c 100%) !important;
+}
+[data-theme="mariobros"] {
+  --tp-bg: #0d47a1;
+  --tp-card: rgba(211, 47, 47, 0.12);
+  --tp-fg: #fff9c4;
+  --tp-accent: #d32f2f;
+  --tp-accent-soft: rgba(211, 47, 47, 0.25);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(251, 192, 45, 0.18), transparent 50%),
+    radial-gradient(circle at 70% 80%, rgba(211, 47, 47, 0.15), transparent 50%),
+    linear-gradient(180deg, #1976d2 0%, #0d47a1 100%) !important;
+}
+[data-theme="mariobros"] .text-cyan-300,
+[data-theme="mariobros"] .text-cyan-400 { color: #fbc02d !important; }
+[data-theme="naruto"] {
+  --tp-bg: #0a0a0a;
+  --tp-card: rgba(255, 107, 0, 0.08);
+  --tp-fg: #ffe0b2;
+  --tp-accent: #ff6b00;
+  --tp-accent-soft: rgba(255, 107, 0, 0.2);
+  background: radial-gradient(ellipse at top, #2e1500 0%, #0a0a0a 70%) !important;
+}
+
+/* ============================================================
+   PACK GIGANTE — TEMAS CULTURAIS NOVOS
+   ============================================================ */
+
+[data-theme="pharma"] {
+  --tp-bg: #0a1929;
+  --tp-card: rgba(6, 182, 212, 0.08);
+  --tp-fg: #e0f2fe;
+  --tp-accent: #06b6d4;
+  --tp-accent-soft: rgba(6, 182, 212, 0.2);
+  background: radial-gradient(ellipse at top, #0e2540 0%, #0a1929 70%) !important;
+}
+
+[data-theme="monster"] {
+  --tp-bg: #020a02;
+  --tp-card: rgba(57, 255, 20, 0.06);
+  --tp-fg: #d0ffd0;
+  --tp-accent: #39FF14;
+  --tp-accent-soft: rgba(57, 255, 20, 0.15);
+  background: radial-gradient(ellipse at bottom, #0d2a0d 0%, #020a02 70%) !important;
+}
+[data-theme="monster"] .text-cyan-300,
+[data-theme="monster"] .text-cyan-400 { color: #39FF14 !important; text-shadow: 0 0 6px rgba(57,255,20,0.6); }
+
+[data-theme="whisky"] {
+  --tp-bg: #1a0f04;
+  --tp-card: rgba(217, 119, 6, 0.08);
+  --tp-fg: #fde68a;
+  --tp-accent: #d97706;
+  --tp-accent-soft: rgba(217, 119, 6, 0.2);
+  background: linear-gradient(135deg, #2a1810 0%, #1a0f04 100%) !important;
+}
+
+[data-theme="redbull"] {
+  --tp-bg: #0a0e3a;
+  --tp-card: rgba(220, 38, 38, 0.08);
+  --tp-fg: #fee2e2;
+  --tp-accent: #dc2626;
+  --tp-accent-soft: rgba(220, 38, 38, 0.2);
+  background: linear-gradient(135deg, #0a0e3a 0%, #1a1f4d 100%) !important;
+}
+
+[data-theme="money"] {
+  --tp-bg: #021207;
+  --tp-card: rgba(21, 128, 61, 0.08);
+  --tp-fg: #bbf7d0;
+  --tp-accent: #15803d;
+  --tp-accent-soft: rgba(21, 128, 61, 0.25);
+  background: radial-gradient(ellipse at top, #04210d 0%, #021207 70%) !important;
+}
+
+[data-theme="policia"] {
+  --tp-bg: #020817;
+  --tp-card: rgba(30, 64, 175, 0.08);
+  --tp-fg: #dbeafe;
+  --tp-accent: #1e40af;
+  --tp-accent-soft: rgba(30, 64, 175, 0.25);
+  background: linear-gradient(135deg, #0a142e 0%, #020817 100%) !important;
+}
+
+[data-theme="bolsa"] {
+  --tp-bg: #020617;
+  --tp-card: rgba(16, 185, 129, 0.08);
+  --tp-fg: #d1fae5;
+  --tp-accent: #10b981;
+  --tp-accent-soft: rgba(16, 185, 129, 0.2);
+  background: linear-gradient(180deg, #0f172a 0%, #020617 100%) !important;
+}
+
+[data-theme="luxocars"] {
+  --tp-bg: #0a0a0a;
+  --tp-card: rgba(220, 38, 38, 0.06);
+  --tp-fg: #e5e5e5;
+  --tp-accent: #dc2626;
+  --tp-accent-soft: rgba(220, 38, 38, 0.2);
+  background: linear-gradient(180deg, #171717 0%, #0a0a0a 100%) !important;
+}
+
+[data-theme="louisvuitton"] {
+  --tp-bg: #1c0e02;
+  --tp-card: rgba(217, 119, 6, 0.10);
+  --tp-fg: #fef3c7;
+  --tp-accent: #d97706;
+  --tp-accent-soft: rgba(217, 119, 6, 0.2);
+  background: linear-gradient(135deg, #2e1607 0%, #1c0e02 100%) !important;
+}
+
+[data-theme="gucci"] {
+  --tp-bg: #0a0a0a;
+  --tp-card: rgba(220, 38, 38, 0.06);
+  --tp-fg: #fef3c7;
+  --tp-accent: #15803d;
+  --tp-accent-soft: rgba(21, 128, 61, 0.2);
+  background: linear-gradient(180deg, #171717 0%, #0a0a0a 100%) !important;
+}
+
+[data-theme="wallstreet"] {
+  --tp-bg: #0c0a09;
+  --tp-card: rgba(234, 179, 8, 0.10);
+  --tp-fg: #fef9c3;
+  --tp-accent: #eab308;
+  --tp-accent-soft: rgba(234, 179, 8, 0.22);
+  background: linear-gradient(180deg, #1c1917 0%, #0c0a09 100%) !important;
+}
+
+[data-theme="lula"] {
+  --tp-bg: #7f1d1d;
+  --tp-card: rgba(251, 191, 36, 0.12);
+  --tp-fg: #fef9c3;
+  --tp-accent: #fbbf24;
+  --tp-accent-soft: rgba(251, 191, 36, 0.25);
+  background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%) !important;
+}
+
+[data-theme="bolsonaro"] {
+  --tp-bg: #022c22;
+  --tp-card: rgba(250, 204, 21, 0.12);
+  --tp-fg: #fef9c3;
+  --tp-accent: #facc15;
+  --tp-accent-soft: rgba(250, 204, 21, 0.25);
+  background: linear-gradient(135deg, #064e3b 0%, #022c22 100%) !important;
+}
+
+[data-theme="praia"] {
+  --tp-bg: #0c4a6e;
+  --tp-card: rgba(255, 255, 255, 0.10);
+  --tp-fg: #ecfdf5;
+  --tp-accent: #06b6d4;
+  --tp-accent-soft: rgba(6, 182, 212, 0.25);
+  background: linear-gradient(180deg, #38bdf8 0%, #fde68a 100%) !important;
+}
+
+[data-theme="jesus"] {
+  --tp-bg: #1e3a8a;
+  --tp-card: rgba(250, 204, 21, 0.10);
+  --tp-fg: #fef3c7;
+  --tp-accent: #eab308;
+  --tp-accent-soft: rgba(234, 179, 8, 0.25);
+  background: radial-gradient(ellipse at top, rgba(250,204,21,0.30), transparent 70%), linear-gradient(180deg, #1e3a8a 0%, #312e81 100%) !important;
+}
+
+[data-theme="saopaulo"] {
+  --tp-bg: #18181b;
+  --tp-card: rgba(220, 38, 38, 0.06);
+  --tp-fg: #fafafa;
+  --tp-accent: #dc2626;
+  --tp-accent-soft: rgba(220, 38, 38, 0.2);
+  background: linear-gradient(180deg, #27272a 0%, #18181b 100%) !important;
+}
+
+[data-theme="rio"] {
+  --tp-bg: #0284c7;
+  --tp-card: rgba(255, 255, 255, 0.08);
+  --tp-fg: #ecfdf5;
+  --tp-accent: #fbbf24;
+  --tp-accent-soft: rgba(251, 191, 36, 0.25);
+  background: linear-gradient(180deg, #0284c7 0%, #16a34a 100%) !important;
+}
+
+[data-theme="bahia"] {
+  --tp-bg: #7c2d12;
+  --tp-card: rgba(250, 204, 21, 0.12);
+  --tp-fg: #fef3c7;
+  --tp-accent: #facc15;
+  --tp-accent-soft: rgba(250, 204, 21, 0.25);
+  background: linear-gradient(135deg, #9a3412 0%, #7c2d12 100%) !important;
+}
+
+[data-theme="cassino"] {
+  --tp-bg: #0a0a0a;
+  --tp-card: rgba(220, 38, 38, 0.10);
+  --tp-fg: #fef3c7;
+  --tp-accent: #dc2626;
+  --tp-accent-soft: rgba(220, 38, 38, 0.25);
+  background: radial-gradient(ellipse at center, #1f0a0a 0%, #0a0a0a 70%) !important;
+}
+
+[data-theme="miami"] {
+  --tp-bg: #1e1b4b;
+  --tp-card: rgba(236, 72, 153, 0.10);
+  --tp-fg: #fce7f3;
+  --tp-accent: #ec4899;
+  --tp-accent-soft: rgba(236, 72, 153, 0.25);
+  background: linear-gradient(135deg, #831843 0%, #1e1b4b 100%) !important;
+}
+
+[data-theme="dubai"] {
+  --tp-bg: #451a03;
+  --tp-card: rgba(217, 119, 6, 0.12);
+  --tp-fg: #fef3c7;
+  --tp-accent: #d97706;
+  --tp-accent-soft: rgba(217, 119, 6, 0.25);
+  background: linear-gradient(180deg, #7c2d12 0%, #451a03 100%) !important;
+}
+
+/* RGB — TUDO ARCO-ÍRIS (texto + bordas + accent) */
+@keyframes bp-rgb-shift {
+  0%   { color: #ef4444; border-color: #ef4444; }
+  16%  { color: #f97316; border-color: #f97316; }
+  33%  { color: #facc15; border-color: #facc15; }
+  50%  { color: #22c55e; border-color: #22c55e; }
+  66%  { color: #3b82f6; border-color: #3b82f6; }
+  83%  { color: #a855f7; border-color: #a855f7; }
+  100% { color: #ec4899; border-color: #ec4899; }
+}
+@keyframes bp-rgb-bg {
+  0%   { background-color: rgba(239,68,68,0.12); }
+  20%  { background-color: rgba(249,115,22,0.12); }
+  40%  { background-color: rgba(34,197,94,0.12); }
+  60%  { background-color: rgba(59,130,246,0.12); }
+  80%  { background-color: rgba(168,85,247,0.12); }
+  100% { background-color: rgba(236,72,153,0.12); }
+}
+[data-theme="rgb"] {
+  --tp-bg: #0a0a0a;
+  --tp-card: rgba(168, 85, 247, 0.08);
+  --tp-fg: #ec4899;
+  --tp-accent: #a855f7;
+  background: linear-gradient(135deg, #0a0a0a 0%, #171717 100%) !important;
+}
+[data-theme="rgb"] .text-white,
+[data-theme="rgb"] .text-zinc-100,
+[data-theme="rgb"] .text-zinc-200,
+[data-theme="rgb"] .text-zinc-300,
+[data-theme="rgb"] .text-cyan-300,
+[data-theme="rgb"] .text-cyan-400 {
+  animation: bp-rgb-shift 6s linear infinite !important;
+}
+
+[data-theme="spotify"] {
+  --tp-bg: #191414;
+  --tp-card: rgba(29, 185, 84, 0.08);
+  --tp-fg: #ffffff;
+  --tp-accent: #1DB954;
+  --tp-accent-soft: rgba(29, 185, 84, 0.22);
+  background: linear-gradient(180deg, #282828 0%, #191414 100%) !important;
+}
+[data-theme="spotify"] .text-cyan-300,
+[data-theme="spotify"] .text-cyan-400 { color: #1DB954 !important; }
+
+[data-theme="claude"] {
+  --tp-bg: #1a0f0a;
+  --tp-card: rgba(204, 120, 92, 0.08);
+  --tp-fg: #fed7aa;
+  --tp-accent: #cc785c;
+  --tp-accent-soft: rgba(204, 120, 92, 0.2);
+  background: radial-gradient(ellipse at top, #2a1810 0%, #1a0f0a 70%) !important;
+}
+
+[data-theme="hellokitty"] {
+  --tp-bg: #fce7f3;
+  --tp-card: #ffffff;
+  --tp-fg: #831843;
+  --tp-accent: #ec4899;
+  --tp-accent-soft: rgba(236, 72, 153, 0.18);
+  background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%) !important;
+}
+[data-theme="hellokitty"] .text-white,
+[data-theme="hellokitty"] .text-zinc-100,
+[data-theme="hellokitty"] .text-zinc-200 { color: #831843 !important; }
+[data-theme="hellokitty"] .text-zinc-300 { color: #9f1239 !important; }
+[data-theme="hellokitty"] .text-zinc-400 { color: #be185d !important; }
+[data-theme="hellokitty"] .text-zinc-500 { color: #c2185b !important; }
+[data-theme="hellokitty"] .bg-black,
+[data-theme="hellokitty"] .bg-black\/40,
+[data-theme="hellokitty"] .bg-black\/30 { background: #ffffff !important; }
+
+[data-theme="copa"] {
+  --tp-bg: #14532d;
+  --tp-card: rgba(250, 204, 21, 0.10);
+  --tp-fg: #fef9c3;
+  --tp-accent: #facc15;
+  --tp-accent-soft: rgba(250, 204, 21, 0.22);
+  background: linear-gradient(180deg, #166534 0%, #14532d 100%) !important;
+}
+
+[data-theme="zumbi"] {
+  --tp-bg: #0a0a05;
+  --tp-card: rgba(101, 163, 13, 0.08);
+  --tp-fg: #67e8f9;
+  --tp-accent: #0891b2;
+  --tp-accent-soft: rgba(101, 163, 13, 0.22);
+  background: radial-gradient(ellipse at top, rgba(254,243,199,0.15), transparent 60%), linear-gradient(180deg, #1a1a0a 0%, #0a0a05 100%) !important;
+}
+
+[data-theme="tiktok"] {
+  --tp-bg: #000000;
+  --tp-card: rgba(255, 0, 80, 0.08);
+  --tp-fg: #ffffff;
+  --tp-accent: #ff0050;
+  --tp-accent-soft: rgba(255, 0, 80, 0.22);
+  background: linear-gradient(135deg, #0a0a0a 0%, #000000 100%) !important;
+}
+
+[data-theme="kwai"] {
+  --tp-bg: #1a0d00;
+  --tp-card: rgba(255, 122, 0, 0.08);
+  --tp-fg: #ffedd5;
+  --tp-accent: #FF7A00;
+  --tp-accent-soft: rgba(255, 122, 0, 0.25);
+  background: radial-gradient(ellipse at center, #2e1700 0%, #1a0d00 70%) !important;
+}
+
+[data-theme="google"] {
+  --tp-bg: #ffffff;
+  --tp-card: #f8f9fa;
+  --tp-fg: #202124;
+  --tp-accent: #4285F4;
+  --tp-accent-soft: rgba(66, 133, 244, 0.18);
+  background: #ffffff !important;
+}
+[data-theme="google"] .text-white,
+[data-theme="google"] .text-zinc-100,
+[data-theme="google"] .text-zinc-200 { color: #202124 !important; }
+[data-theme="google"] .text-zinc-300 { color: #3c4043 !important; }
+[data-theme="google"] .text-zinc-400 { color: #5f6368 !important; }
+[data-theme="google"] .text-zinc-500 { color: #80868b !important; }
+[data-theme="google"] .bg-black,
+[data-theme="google"] .bg-black\/40,
+[data-theme="google"] .bg-black\/30 { background: #f8f9fa !important; }
+
+[data-theme="csgo"] {
+  --tp-bg: #0a0a0a;
+  --tp-card: rgba(245, 158, 11, 0.08);
+  --tp-fg: #fef3c7;
+  --tp-accent: #f59e0b;
+  --tp-accent-soft: rgba(245, 158, 11, 0.22);
+  background: linear-gradient(180deg, #1c1917 0%, #0a0a0a 100%) !important;
+}
+
+[data-theme="facebook"] {
+  --tp-bg: #0f1a2e;
+  --tp-card: rgba(24, 119, 242, 0.10);
+  --tp-fg: #dbeafe;
+  --tp-accent: #1877F2;
+  --tp-accent-soft: rgba(24, 119, 242, 0.22);
+  background: linear-gradient(180deg, #1a2942 0%, #0f1a2e 100%) !important;
+}
+
+[data-theme="japao"] {
+  --tp-bg: #fecaca;
+  --tp-card: rgba(220, 38, 38, 0.08);
+  --tp-fg: #7f1d1d;
+  --tp-accent: #dc2626;
+  --tp-accent-soft: rgba(220, 38, 38, 0.22);
+  background: linear-gradient(180deg, #fecaca 0%, #ffffff 100%) !important;
+}
+[data-theme="japao"] .text-white,
+[data-theme="japao"] .text-zinc-100,
+[data-theme="japao"] .text-zinc-200 { color: #7f1d1d !important; }
+[data-theme="japao"] .text-zinc-300 { color: #991b1b !important; }
+[data-theme="japao"] .text-zinc-400 { color: #b91c1c !important; }
+
+[data-theme="angola"] {
+  --tp-bg: #0a0a0a;
+  --tp-card: rgba(220, 38, 38, 0.10);
+  --tp-fg: #fef3c7;
+  --tp-accent: #facc15;
+  --tp-accent-soft: rgba(250, 204, 21, 0.22);
+  background: linear-gradient(180deg, #1c1917 0%, #0a0a0a 100%) !important;
+}
+
+[data-theme="africa"] {
+  --tp-bg: #451a03;
+  --tp-card: rgba(234, 88, 12, 0.10);
+  --tp-fg: #fef3c7;
+  --tp-accent: #ea580c;
+  --tp-accent-soft: rgba(234, 88, 12, 0.25);
+  background: linear-gradient(180deg, #7c2d12 0%, #451a03 100%) !important;
+}
+
+[data-theme="prada"] {
+  --tp-bg: #0a0a0a;
+  --tp-card: rgba(163, 163, 163, 0.05);
+  --tp-fg: #e5e5e5;
+  --tp-accent: #a3a3a3;
+  --tp-accent-soft: rgba(163, 163, 163, 0.15);
+  background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%) !important;
+}
+
+[data-theme="inferno"] {
+  --tp-bg: #000000;
+  --tp-card: rgba(220, 38, 38, 0.10);
+  --tp-fg: #fecaca;
+  --tp-accent: #dc2626;
+  --tp-accent-soft: rgba(220, 38, 38, 0.28);
+  background: radial-gradient(ellipse at bottom, #7f1d1d 0%, #000000 60%) !important;
+}
+
+[data-theme="mcdonalds"] {
+  --tp-bg: #7f1d1d;
+  --tp-card: rgba(251, 191, 36, 0.12);
+  --tp-fg: #fef3c7;
+  --tp-accent: #fbbf24;
+  --tp-accent-soft: rgba(251, 191, 36, 0.25);
+  background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%) !important;
+}
+
+[data-theme="67"] {
+  --tp-bg: #000000;
+  --tp-card: rgba(34, 211, 238, 0.06);
+  --tp-fg: #22d3ee;
+  --tp-accent: #22d3ee;
+  --tp-accent-soft: rgba(34, 211, 238, 0.2);
+  background: #000000 !important;
+}
+[data-theme="67"] .text-white,
+[data-theme="67"] .text-zinc-100,
+[data-theme="67"] .text-zinc-200 { color: #22d3ee !important; }
+
+[data-theme="trollface"] {
+  --tp-bg: #1a1a1a;
+  --tp-card: rgba(255, 255, 255, 0.04);
+  --tp-fg: #ffffff;
+  --tp-accent: #ffffff;
+  --tp-accent-soft: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%) !important;
+}
+
+[data-theme="burgerking"] {
+  --tp-bg: #7c2d12;
+  --tp-card: rgba(249, 115, 22, 0.12);
+  --tp-fg: #fed7aa;
+  --tp-accent: #f97316;
+  --tp-accent-soft: rgba(249, 115, 22, 0.25);
+  background: linear-gradient(135deg, #9a3412 0%, #7c2d12 100%) !important;
+}
+
+[data-theme="ibiza"] {
+  --tp-bg: #831843;
+  --tp-card: rgba(0, 0, 0, 0.3);
+  --tp-fg: #fef3c7;
+  --tp-accent: #ec4899;
+  --tp-accent-soft: rgba(236, 72, 153, 0.25);
+  background: linear-gradient(135deg, #f97316 0%, #ec4899 50%, #8b5cf6 100%) !important;
+}
+
+@keyframes bp-balada-pulse {
+  0%, 100% { background-color: rgba(168, 85, 247, 0.12); }
+  25% { background-color: rgba(236, 72, 153, 0.12); }
+  50% { background-color: rgba(34, 211, 238, 0.12); }
+  75% { background-color: rgba(250, 204, 21, 0.12); }
+}
+[data-theme="balada"] {
+  --tp-bg: #0a0014;
+  --tp-card: rgba(168, 85, 247, 0.10);
+  --tp-fg: #fce7f3;
+  --tp-accent: #a855f7;
+  --tp-accent-soft: rgba(168, 85, 247, 0.25);
+  background: linear-gradient(135deg, #1a0a2e 0%, #0a0014 100%) !important;
+}
+[data-theme="balada"] .bg-cyan-400\/10,
+[data-theme="balada"] .bg-white\/\[0\.02\] {
+  animation: bp-balada-pulse 4s ease-in-out infinite !important;
+}
+
+/* ============================================================
+   PACK #3 — COMUNIDADES, MARCAS, MEMES
+   ============================================================ */
+
+[data-theme="adega"] { --tp-bg: #1a0a0a; --tp-card: rgba(153,27,27,0.10); --tp-fg: #fecaca; --tp-accent: #991b1b; --tp-accent-soft: rgba(153,27,27,0.25); background: linear-gradient(180deg, #2a0e0e 0%, #1a0a0a 100%) !important; }
+[data-theme="autismo"] { --tp-bg: #1e1b4b; --tp-card: rgba(168,85,247,0.10); --tp-fg: #fce7f3; --tp-accent: #a855f7; --tp-accent-soft: rgba(168,85,247,0.22); background: linear-gradient(135deg, #1e1b4b 0%, #831843 100%) !important; }
+[data-theme="anonimos"] { --tp-bg: #000000; --tp-card: rgba(132,204,22,0.08); --tp-fg: #67e8f9; --tp-accent: #06b6d4; --tp-accent-soft: rgba(132,204,22,0.22); background: linear-gradient(180deg, #0a0a0a 0%, #000000 100%) !important; }
+[data-theme="down"] { --tp-bg: #312e81; --tp-card: rgba(236,72,153,0.10); --tp-fg: #fce7f3; --tp-accent: #ec4899; --tp-accent-soft: rgba(236,72,153,0.22); background: linear-gradient(135deg, #312e81 0%, #831843 100%) !important; }
+[data-theme="macaco"] { --tp-bg: #451a03; --tp-card: rgba(251,191,36,0.10); --tp-fg: #fef3c7; --tp-accent: #fbbf24; --tp-accent-soft: rgba(251,191,36,0.22); background: linear-gradient(180deg, #7c2d12 0%, #451a03 100%) !important; }
+[data-theme="armas"] { --tp-bg: #0a0a0a; --tp-card: rgba(234,88,12,0.08); --tp-fg: #fed7aa; --tp-accent: #ea580c; --tp-accent-soft: rgba(234,88,12,0.22); background: linear-gradient(180deg, #171717 0%, #0a0a0a 100%) !important; }
+[data-theme="leadburro"] { --tp-bg: #020617; --tp-card: rgba(6,182,212,0.08); --tp-fg: #cffafe; --tp-accent: #06b6d4; --tp-accent-soft: rgba(6,182,212,0.20); background: linear-gradient(180deg, #0f172a 0%, #020617 100%) !important; }
+[data-theme="camisinha"] { --tp-bg: #1a0a14; --tp-card: rgba(236,72,153,0.10); --tp-fg: #fce7f3; --tp-accent: #ec4899; --tp-accent-soft: rgba(236,72,153,0.22); background: linear-gradient(135deg, #2a0e22 0%, #1a0a14 100%) !important; }
+[data-theme="pombo"] { --tp-bg: #0a0e1a; --tp-card: rgba(148,163,184,0.08); --tp-fg: #e2e8f0; --tp-accent: #94a3b8; --tp-accent-soft: rgba(148,163,184,0.20); background: linear-gradient(180deg, #171b2e 0%, #0a0e1a 100%) !important; }
+[data-theme="cadeirante"] { --tp-bg: #0a1929; --tp-card: rgba(59,130,246,0.10); --tp-fg: #bfdbfe; --tp-accent: #3b82f6; --tp-accent-soft: rgba(59,130,246,0.22); background: linear-gradient(180deg, #0e2540 0%, #0a1929 100%) !important; }
+[data-theme="cego"] {
+  --tp-bg: #000000;
+  --tp-card: rgba(245,158,11,0.06);
+  --tp-fg: #fef3c7;
+  --tp-accent: #f59e0b;
+  --tp-accent-soft: rgba(245,158,11,0.18);
+  background: #000000 !important;
+}
+[data-theme="coco"] { --tp-bg: #1c0a01; --tp-card: rgba(146,64,14,0.10); --tp-fg: #fed7aa; --tp-accent: #92400e; --tp-accent-soft: rgba(146,64,14,0.22); background: linear-gradient(180deg, #2e1607 0%, #1c0a01 100%) !important; }
+[data-theme="doacao"] { --tp-bg: #1e1b4b; --tp-card: rgba(220,38,38,0.10); --tp-fg: #fce7f3; --tp-accent: #dc2626; --tp-accent-soft: rgba(220,38,38,0.22); background: linear-gradient(135deg, #831843 0%, #1e1b4b 100%) !important; }
+[data-theme="jardim"] { --tp-bg: #022c22; --tp-card: rgba(22,163,74,0.10); --tp-fg: #bbf7d0; --tp-accent: #16a34a; --tp-accent-soft: rgba(22,163,74,0.22); background: linear-gradient(180deg, #064e3b 0%, #022c22 100%) !important; }
+[data-theme="ferrari"] { --tp-bg: #1a0202; --tp-card: rgba(220,38,38,0.10); --tp-fg: #fecaca; --tp-accent: #dc2626; --tp-accent-soft: rgba(220,38,38,0.25); background: linear-gradient(180deg, #2a0808 0%, #1a0202 100%) !important; }
+[data-theme="lamborghini"] { --tp-bg: #0a0a0a; --tp-card: rgba(250,204,21,0.10); --tp-fg: #fef9c3; --tp-accent: #facc15; --tp-accent-soft: rgba(250,204,21,0.22); background: linear-gradient(180deg, #171717 0%, #0a0a0a 100%) !important; }
+[data-theme="bitcoin"] { --tp-bg: #1a0d00; --tp-card: rgba(249,115,22,0.10); --tp-fg: #fed7aa; --tp-accent: #f97316; --tp-accent-soft: rgba(249,115,22,0.25); background: radial-gradient(ellipse at center, #2e1700 0%, #1a0d00 70%) !important; }
+[data-theme="solana"] { --tp-bg: #581c87; --tp-card: rgba(168,85,247,0.10); --tp-fg: #fce7f3; --tp-accent: #a855f7; --tp-accent-soft: rgba(168,85,247,0.25); background: linear-gradient(135deg, #581c87 0%, #14532d 100%) !important; }
+[data-theme="monero"] { --tp-bg: #0a0a0a; --tp-card: rgba(249,115,22,0.10); --tp-fg: #fed7aa; --tp-accent: #f97316; --tp-accent-soft: rgba(249,115,22,0.22); background: linear-gradient(180deg, #1c1917 0%, #0a0a0a 100%) !important; }
+[data-theme="ghosts"] { --tp-bg: #0a0a0a; --tp-card: rgba(163,163,163,0.05); --tp-fg: #f5f5f5; --tp-accent: #a3a3a3; --tp-accent-soft: rgba(163,163,163,0.15); background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%) !important; }
+[data-theme="cadeia"] { --tp-bg: #0a0a0a; --tp-card: rgba(113,113,122,0.06); --tp-fg: #d4d4d8; --tp-accent: #71717a; --tp-accent-soft: rgba(113,113,122,0.18); background: linear-gradient(180deg, #1c1917 0%, #0a0a0a 100%) !important; }
+[data-theme="nike"] { --tp-bg: #fafafa; --tp-card: #f5f5f5; --tp-fg: #0a0a0a; --tp-accent: #0a0a0a; --tp-accent-soft: rgba(10,10,10,0.10); background: #fafafa !important; }
+[data-theme="nike"] .text-white, [data-theme="nike"] .text-zinc-100, [data-theme="nike"] .text-zinc-200 { color: #0a0a0a !important; }
+[data-theme="nike"] .text-zinc-300 { color: #404040 !important; }
+[data-theme="nike"] .text-zinc-400 { color: #525252 !important; }
+[data-theme="nike"] .text-zinc-500 { color: #737373 !important; }
+[data-theme="nike"] .bg-black, [data-theme="nike"] .bg-black\/40, [data-theme="nike"] .bg-black\/30 { background: #f5f5f5 !important; }
+[data-theme="cacto"] { --tp-bg: #1a1209; --tp-card: rgba(22,163,74,0.10); --tp-fg: #67e8f9; --tp-accent: #16a34a; --tp-accent-soft: rgba(22,163,74,0.22); background: linear-gradient(180deg, #2e1f0f 0%, #1a1209 100%) !important; }
+[data-theme="kiwify"] { --tp-bg: #1a2e0a; --tp-card: rgba(132,204,22,0.10); --tp-fg: #cffafe; --tp-accent: #06b6d4; --tp-accent-soft: rgba(132,204,22,0.22); background: linear-gradient(180deg, #2e4d14 0%, #1a2e0a 100%) !important; }
+[data-theme="canetaazul"] { --tp-bg: #0f1a2e; --tp-card: rgba(30,64,175,0.10); --tp-fg: #dbeafe; --tp-accent: #1e40af; --tp-accent-soft: rgba(30,64,175,0.22); background: linear-gradient(180deg, #1a2942 0%, #0f1a2e 100%) !important; }
+[data-theme="robin"] { --tp-bg: #0a0a0a; --tp-card: rgba(250,204,21,0.08); --tp-fg: #fef9c3; --tp-accent: #facc15; --tp-accent-soft: rgba(250,204,21,0.22); background: linear-gradient(135deg, #171717 0%, #0a0a0a 100%) !important; }
+[data-theme="southpark"] { --tp-bg: #f8fafc; --tp-card: #ffffff; --tp-fg: #0a0a0a; --tp-accent: #dc2626; --tp-accent-soft: rgba(220,38,38,0.12); background: linear-gradient(180deg, #f8fafc 0%, #cbd5e1 100%) !important; }
+[data-theme="southpark"] .text-white, [data-theme="southpark"] .text-zinc-100, [data-theme="southpark"] .text-zinc-200 { color: #0a0a0a !important; }
+[data-theme="southpark"] .text-zinc-300 { color: #3f3f46 !important; }
+[data-theme="southpark"] .text-zinc-400 { color: #52525b !important; }
+[data-theme="southpark"] .text-zinc-500 { color: #71717a !important; }
+[data-theme="southpark"] .bg-black, [data-theme="southpark"] .bg-black\/40, [data-theme="southpark"] .bg-black\/30 { background: #ffffff !important; }
+[data-theme="apenasumshow"] { --tp-bg: #0a1929; --tp-card: rgba(59,130,246,0.10); --tp-fg: #bae6fd; --tp-accent: #3b82f6; --tp-accent-soft: rgba(59,130,246,0.22); background: linear-gradient(180deg, #0e2540 0%, #0a1929 100%) !important; }
+[data-theme="chaves"] { --tp-bg: #451a03; --tp-card: rgba(250,204,21,0.12); --tp-fg: #fef3c7; --tp-accent: #facc15; --tp-accent-soft: rgba(250,204,21,0.22); background: linear-gradient(135deg, #7c2d12 0%, #451a03 100%) !important; }
+[data-theme="monica"] { --tp-bg: #fef2f2; --tp-card: #fee2e2; --tp-fg: #7f1d1d; --tp-accent: #dc2626; --tp-accent-soft: rgba(220,38,38,0.18); background: linear-gradient(180deg, #fee2e2 0%, #fef2f2 100%) !important; }
+[data-theme="monica"] .text-white, [data-theme="monica"] .text-zinc-100, [data-theme="monica"] .text-zinc-200 { color: #7f1d1d !important; }
+[data-theme="monica"] .text-zinc-300 { color: #9f1239 !important; }
+[data-theme="monica"] .text-zinc-400 { color: #be185d !important; }
+[data-theme="monica"] .text-zinc-500 { color: #c2185b !important; }
+[data-theme="monica"] .bg-black, [data-theme="monica"] .bg-black\/40, [data-theme="monica"] .bg-black\/30 { background: #fee2e2 !important; }
+[data-theme="lacasadepapel"] { --tp-bg: #0a0a0a; --tp-card: rgba(220,38,38,0.10); --tp-fg: #fecaca; --tp-accent: #dc2626; --tp-accent-soft: rgba(220,38,38,0.25); background: linear-gradient(135deg, #1f0a0a 0%, #0a0a0a 100%) !important; }
+[data-theme="tiopatinhas"] { --tp-bg: #0a1929; --tp-card: rgba(251,191,36,0.12); --tp-fg: #fef3c7; --tp-accent: #fbbf24; --tp-accent-soft: rgba(251,191,36,0.25); background: linear-gradient(180deg, #0e2540 0%, #0a1929 100%) !important; }
+[data-theme="monalisa"] { --tp-bg: #1a0f04; --tp-card: rgba(161,98,7,0.10); --tp-fg: #fde68a; --tp-accent: #a16207; --tp-accent-soft: rgba(161,98,7,0.22); background: linear-gradient(135deg, #2a1810 0%, #1a0f04 100%) !important; }
+[data-theme="suits"] { --tp-bg: #0a0a0a; --tp-card: rgba(30,64,175,0.10); --tp-fg: #dbeafe; --tp-accent: #1e40af; --tp-accent-soft: rgba(30,64,175,0.22); background: linear-gradient(180deg, #0a142e 0%, #0a0a0a 100%) !important; }
+[data-theme="breakingbad"] { --tp-bg: #022c22; --tp-card: rgba(250,204,21,0.10); --tp-fg: #fef9c3; --tp-accent: #facc15; --tp-accent-soft: rgba(250,204,21,0.22); background: linear-gradient(180deg, #064e3b 0%, #022c22 100%) !important; }
+[data-theme="lgbt"] { --tp-bg: #1e1b4b; --tp-card: rgba(168,85,247,0.10); --tp-fg: #fce7f3; --tp-accent: #a855f7; --tp-accent-soft: rgba(168,85,247,0.22); background: linear-gradient(135deg, #831843 0%, #1e1b4b 50%, #14532d 100%) !important; }
+[data-theme="uber"] { --tp-bg: #fafafa; --tp-card: #f5f5f5; --tp-fg: #0a0a0a; --tp-accent: #0a0a0a; --tp-accent-soft: rgba(10,10,10,0.10); background: #fafafa !important; }
+[data-theme="uber"] .text-white, [data-theme="uber"] .text-zinc-100, [data-theme="uber"] .text-zinc-200 { color: #0a0a0a !important; }
+[data-theme="uber"] .text-zinc-300 { color: #404040 !important; }
+[data-theme="uber"] .text-zinc-400 { color: #525252 !important; }
+[data-theme="uber"] .text-zinc-500 { color: #737373 !important; }
+[data-theme="uber"] .bg-black, [data-theme="uber"] .bg-black\/40, [data-theme="uber"] .bg-black\/30 { background: #f5f5f5 !important; }
+[data-theme="99pop"] { --tp-bg: #0a0a0a; --tp-card: rgba(250,204,21,0.10); --tp-fg: #fef9c3; --tp-accent: #facc15; --tp-accent-soft: rgba(250,204,21,0.25); background: linear-gradient(135deg, #171717 0%, #0a0a0a 100%) !important; }
+[data-theme="ifood"] { --tp-bg: #7f1d1d; --tp-card: rgba(220,38,38,0.10); --tp-fg: #fef3c7; --tp-accent: #dc2626; --tp-accent-soft: rgba(220,38,38,0.25); background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%) !important; }
+[data-theme="atacadao"] { --tp-bg: #7f1d1d; --tp-card: rgba(251,191,36,0.10); --tp-fg: #fef9c3; --tp-accent: #fbbf24; --tp-accent-soft: rgba(251,191,36,0.22); background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%) !important; }
+[data-theme="motoboy"] { --tp-bg: #0a0a0a; --tp-card: rgba(220,38,38,0.10); --tp-fg: #fecaca; --tp-accent: #dc2626; --tp-accent-soft: rgba(220,38,38,0.22); background: linear-gradient(135deg, #171717 0%, #0a0a0a 100%) !important; }
+[data-theme="natal"] { --tp-bg: #022c22; --tp-card: rgba(220,38,38,0.10); --tp-fg: #fecaca; --tp-accent: #dc2626; --tp-accent-soft: rgba(220,38,38,0.22); background: linear-gradient(180deg, #064e3b 0%, #022c22 100%) !important; }
+[data-theme="minions"] { --tp-bg: #1a1209; --tp-card: rgba(250,204,21,0.12); --tp-fg: #fef9c3; --tp-accent: #facc15; --tp-accent-soft: rgba(250,204,21,0.25); background: linear-gradient(180deg, #2a1f0e 0%, #1a1209 100%) !important; }
+[data-theme="vector"] { --tp-bg: #1a0d00; --tp-card: rgba(249,115,22,0.10); --tp-fg: #fed7aa; --tp-accent: #f97316; --tp-accent-soft: rgba(249,115,22,0.25); background: radial-gradient(ellipse at center, #2e1700 0%, #1a0d00 70%) !important; }
+
+[data-theme="joker"] {
+  --tp-bg: #1a0a2e;
+  --tp-card: rgba(168,85,247,0.10);
+  --tp-fg: #bbf7d0;
+  --tp-accent: #22c55e;
+  --tp-accent-soft: rgba(34,197,94,0.25);
+  background: radial-gradient(ellipse at top, #2e0a4a 0%, #1a0a2e 70%) !important;
+}
+[data-theme="joker"] .text-cyan-300,
+[data-theme="joker"] .text-cyan-400 { color: #22c55e !important; text-shadow: 0 0 8px rgba(34,197,94,0.5); }
+
+/* ============================================================
+   OPACIDADE DOS CARDS — pra o tema ficar SÓ no fundo, não atravessar
+   Aplicado em todos os temas com cena SVG (pack #2 e #3).
+   Cada card pega var(--tp-card) que cada tema já define + backdrop-blur.
+   ============================================================ */
+
+[data-theme="pharma"] .bg-white\/\[0\.02\],
+[data-theme="pharma"] .bg-white\/\[0\.03\],
+[data-theme="pharma"] .bg-white\/\[0\.04\],
+[data-theme="pharma"] .bg-white\/\[0\.06\],
+[data-theme="monster"] .bg-white\/\[0\.02\],
+[data-theme="monster"] .bg-white\/\[0\.03\],
+[data-theme="monster"] .bg-white\/\[0\.04\],
+[data-theme="monster"] .bg-white\/\[0\.06\],
+[data-theme="whisky"] .bg-white\/\[0\.02\],
+[data-theme="whisky"] .bg-white\/\[0\.03\],
+[data-theme="whisky"] .bg-white\/\[0\.04\],
+[data-theme="whisky"] .bg-white\/\[0\.06\],
+[data-theme="redbull"] .bg-white\/\[0\.02\],
+[data-theme="redbull"] .bg-white\/\[0\.03\],
+[data-theme="redbull"] .bg-white\/\[0\.04\],
+[data-theme="redbull"] .bg-white\/\[0\.06\],
+[data-theme="money"] .bg-white\/\[0\.02\],
+[data-theme="money"] .bg-white\/\[0\.03\],
+[data-theme="money"] .bg-white\/\[0\.04\],
+[data-theme="money"] .bg-white\/\[0\.06\],
+[data-theme="policia"] .bg-white\/\[0\.02\],
+[data-theme="policia"] .bg-white\/\[0\.03\],
+[data-theme="policia"] .bg-white\/\[0\.04\],
+[data-theme="policia"] .bg-white\/\[0\.06\],
+[data-theme="bolsa"] .bg-white\/\[0\.02\],
+[data-theme="bolsa"] .bg-white\/\[0\.03\],
+[data-theme="bolsa"] .bg-white\/\[0\.04\],
+[data-theme="bolsa"] .bg-white\/\[0\.06\],
+[data-theme="luxocars"] .bg-white\/\[0\.02\],
+[data-theme="luxocars"] .bg-white\/\[0\.03\],
+[data-theme="luxocars"] .bg-white\/\[0\.04\],
+[data-theme="luxocars"] .bg-white\/\[0\.06\],
+[data-theme="louisvuitton"] .bg-white\/\[0\.02\],
+[data-theme="louisvuitton"] .bg-white\/\[0\.03\],
+[data-theme="louisvuitton"] .bg-white\/\[0\.04\],
+[data-theme="louisvuitton"] .bg-white\/\[0\.06\],
+[data-theme="gucci"] .bg-white\/\[0\.02\],
+[data-theme="gucci"] .bg-white\/\[0\.03\],
+[data-theme="gucci"] .bg-white\/\[0\.04\],
+[data-theme="gucci"] .bg-white\/\[0\.06\],
+[data-theme="wallstreet"] .bg-white\/\[0\.02\],
+[data-theme="wallstreet"] .bg-white\/\[0\.03\],
+[data-theme="wallstreet"] .bg-white\/\[0\.04\],
+[data-theme="wallstreet"] .bg-white\/\[0\.06\],
+[data-theme="lula"] .bg-white\/\[0\.02\],
+[data-theme="lula"] .bg-white\/\[0\.03\],
+[data-theme="lula"] .bg-white\/\[0\.04\],
+[data-theme="lula"] .bg-white\/\[0\.06\],
+[data-theme="bolsonaro"] .bg-white\/\[0\.02\],
+[data-theme="bolsonaro"] .bg-white\/\[0\.03\],
+[data-theme="bolsonaro"] .bg-white\/\[0\.04\],
+[data-theme="bolsonaro"] .bg-white\/\[0\.06\],
+[data-theme="praia"] .bg-white\/\[0\.02\],
+[data-theme="praia"] .bg-white\/\[0\.03\],
+[data-theme="praia"] .bg-white\/\[0\.04\],
+[data-theme="praia"] .bg-white\/\[0\.06\],
+[data-theme="jesus"] .bg-white\/\[0\.02\],
+[data-theme="jesus"] .bg-white\/\[0\.03\],
+[data-theme="jesus"] .bg-white\/\[0\.04\],
+[data-theme="jesus"] .bg-white\/\[0\.06\],
+[data-theme="saopaulo"] .bg-white\/\[0\.02\],
+[data-theme="saopaulo"] .bg-white\/\[0\.03\],
+[data-theme="saopaulo"] .bg-white\/\[0\.04\],
+[data-theme="saopaulo"] .bg-white\/\[0\.06\],
+[data-theme="rio"] .bg-white\/\[0\.02\],
+[data-theme="rio"] .bg-white\/\[0\.03\],
+[data-theme="rio"] .bg-white\/\[0\.04\],
+[data-theme="rio"] .bg-white\/\[0\.06\],
+[data-theme="bahia"] .bg-white\/\[0\.02\],
+[data-theme="bahia"] .bg-white\/\[0\.03\],
+[data-theme="bahia"] .bg-white\/\[0\.04\],
+[data-theme="bahia"] .bg-white\/\[0\.06\],
+[data-theme="cassino"] .bg-white\/\[0\.02\],
+[data-theme="cassino"] .bg-white\/\[0\.03\],
+[data-theme="cassino"] .bg-white\/\[0\.04\],
+[data-theme="cassino"] .bg-white\/\[0\.06\],
+[data-theme="miami"] .bg-white\/\[0\.02\],
+[data-theme="miami"] .bg-white\/\[0\.03\],
+[data-theme="miami"] .bg-white\/\[0\.04\],
+[data-theme="miami"] .bg-white\/\[0\.06\],
+[data-theme="dubai"] .bg-white\/\[0\.02\],
+[data-theme="dubai"] .bg-white\/\[0\.03\],
+[data-theme="dubai"] .bg-white\/\[0\.04\],
+[data-theme="dubai"] .bg-white\/\[0\.06\],
+[data-theme="rgb"] .bg-white\/\[0\.02\],
+[data-theme="rgb"] .bg-white\/\[0\.03\],
+[data-theme="rgb"] .bg-white\/\[0\.04\],
+[data-theme="rgb"] .bg-white\/\[0\.06\],
+[data-theme="spotify"] .bg-white\/\[0\.02\],
+[data-theme="spotify"] .bg-white\/\[0\.03\],
+[data-theme="spotify"] .bg-white\/\[0\.04\],
+[data-theme="spotify"] .bg-white\/\[0\.06\],
+[data-theme="claude"] .bg-white\/\[0\.02\],
+[data-theme="claude"] .bg-white\/\[0\.03\],
+[data-theme="claude"] .bg-white\/\[0\.04\],
+[data-theme="claude"] .bg-white\/\[0\.06\],
+[data-theme="hellokitty"] .bg-white\/\[0\.02\],
+[data-theme="hellokitty"] .bg-white\/\[0\.03\],
+[data-theme="hellokitty"] .bg-white\/\[0\.04\],
+[data-theme="hellokitty"] .bg-white\/\[0\.06\],
+[data-theme="copa"] .bg-white\/\[0\.02\],
+[data-theme="copa"] .bg-white\/\[0\.03\],
+[data-theme="copa"] .bg-white\/\[0\.04\],
+[data-theme="copa"] .bg-white\/\[0\.06\],
+[data-theme="zumbi"] .bg-white\/\[0\.02\],
+[data-theme="zumbi"] .bg-white\/\[0\.03\],
+[data-theme="zumbi"] .bg-white\/\[0\.04\],
+[data-theme="zumbi"] .bg-white\/\[0\.06\],
+[data-theme="tiktok"] .bg-white\/\[0\.02\],
+[data-theme="tiktok"] .bg-white\/\[0\.03\],
+[data-theme="tiktok"] .bg-white\/\[0\.04\],
+[data-theme="tiktok"] .bg-white\/\[0\.06\],
+[data-theme="kwai"] .bg-white\/\[0\.02\],
+[data-theme="kwai"] .bg-white\/\[0\.03\],
+[data-theme="kwai"] .bg-white\/\[0\.04\],
+[data-theme="kwai"] .bg-white\/\[0\.06\],
+[data-theme="google"] .bg-white\/\[0\.02\],
+[data-theme="google"] .bg-white\/\[0\.03\],
+[data-theme="google"] .bg-white\/\[0\.04\],
+[data-theme="google"] .bg-white\/\[0\.06\],
+[data-theme="csgo"] .bg-white\/\[0\.02\],
+[data-theme="csgo"] .bg-white\/\[0\.03\],
+[data-theme="csgo"] .bg-white\/\[0\.04\],
+[data-theme="csgo"] .bg-white\/\[0\.06\],
+[data-theme="facebook"] .bg-white\/\[0\.02\],
+[data-theme="facebook"] .bg-white\/\[0\.03\],
+[data-theme="facebook"] .bg-white\/\[0\.04\],
+[data-theme="facebook"] .bg-white\/\[0\.06\],
+[data-theme="japao"] .bg-white\/\[0\.02\],
+[data-theme="japao"] .bg-white\/\[0\.03\],
+[data-theme="japao"] .bg-white\/\[0\.04\],
+[data-theme="japao"] .bg-white\/\[0\.06\],
+[data-theme="angola"] .bg-white\/\[0\.02\],
+[data-theme="angola"] .bg-white\/\[0\.03\],
+[data-theme="angola"] .bg-white\/\[0\.04\],
+[data-theme="angola"] .bg-white\/\[0\.06\],
+[data-theme="africa"] .bg-white\/\[0\.02\],
+[data-theme="africa"] .bg-white\/\[0\.03\],
+[data-theme="africa"] .bg-white\/\[0\.04\],
+[data-theme="africa"] .bg-white\/\[0\.06\],
+[data-theme="prada"] .bg-white\/\[0\.02\],
+[data-theme="prada"] .bg-white\/\[0\.03\],
+[data-theme="prada"] .bg-white\/\[0\.04\],
+[data-theme="prada"] .bg-white\/\[0\.06\],
+[data-theme="inferno"] .bg-white\/\[0\.02\],
+[data-theme="inferno"] .bg-white\/\[0\.03\],
+[data-theme="inferno"] .bg-white\/\[0\.04\],
+[data-theme="inferno"] .bg-white\/\[0\.06\],
+[data-theme="mcdonalds"] .bg-white\/\[0\.02\],
+[data-theme="mcdonalds"] .bg-white\/\[0\.03\],
+[data-theme="mcdonalds"] .bg-white\/\[0\.04\],
+[data-theme="mcdonalds"] .bg-white\/\[0\.06\],
+[data-theme="67"] .bg-white\/\[0\.02\],
+[data-theme="67"] .bg-white\/\[0\.03\],
+[data-theme="67"] .bg-white\/\[0\.04\],
+[data-theme="67"] .bg-white\/\[0\.06\],
+[data-theme="trollface"] .bg-white\/\[0\.02\],
+[data-theme="trollface"] .bg-white\/\[0\.03\],
+[data-theme="trollface"] .bg-white\/\[0\.04\],
+[data-theme="trollface"] .bg-white\/\[0\.06\],
+[data-theme="burgerking"] .bg-white\/\[0\.02\],
+[data-theme="burgerking"] .bg-white\/\[0\.03\],
+[data-theme="burgerking"] .bg-white\/\[0\.04\],
+[data-theme="burgerking"] .bg-white\/\[0\.06\],
+[data-theme="ibiza"] .bg-white\/\[0\.02\],
+[data-theme="ibiza"] .bg-white\/\[0\.03\],
+[data-theme="ibiza"] .bg-white\/\[0\.04\],
+[data-theme="ibiza"] .bg-white\/\[0\.06\],
+[data-theme="balada"] .bg-white\/\[0\.02\],
+[data-theme="balada"] .bg-white\/\[0\.03\],
+[data-theme="balada"] .bg-white\/\[0\.04\],
+[data-theme="balada"] .bg-white\/\[0\.06\],
+[data-theme="adega"] .bg-white\/\[0\.02\],
+[data-theme="adega"] .bg-white\/\[0\.03\],
+[data-theme="adega"] .bg-white\/\[0\.04\],
+[data-theme="adega"] .bg-white\/\[0\.06\],
+[data-theme="autismo"] .bg-white\/\[0\.02\],
+[data-theme="autismo"] .bg-white\/\[0\.03\],
+[data-theme="autismo"] .bg-white\/\[0\.04\],
+[data-theme="autismo"] .bg-white\/\[0\.06\],
+[data-theme="anonimos"] .bg-white\/\[0\.02\],
+[data-theme="anonimos"] .bg-white\/\[0\.03\],
+[data-theme="anonimos"] .bg-white\/\[0\.04\],
+[data-theme="anonimos"] .bg-white\/\[0\.06\],
+[data-theme="down"] .bg-white\/\[0\.02\],
+[data-theme="down"] .bg-white\/\[0\.03\],
+[data-theme="down"] .bg-white\/\[0\.04\],
+[data-theme="down"] .bg-white\/\[0\.06\],
+[data-theme="macaco"] .bg-white\/\[0\.02\],
+[data-theme="macaco"] .bg-white\/\[0\.03\],
+[data-theme="macaco"] .bg-white\/\[0\.04\],
+[data-theme="macaco"] .bg-white\/\[0\.06\],
+[data-theme="armas"] .bg-white\/\[0\.02\],
+[data-theme="armas"] .bg-white\/\[0\.03\],
+[data-theme="armas"] .bg-white\/\[0\.04\],
+[data-theme="armas"] .bg-white\/\[0\.06\],
+[data-theme="leadburro"] .bg-white\/\[0\.02\],
+[data-theme="leadburro"] .bg-white\/\[0\.03\],
+[data-theme="leadburro"] .bg-white\/\[0\.04\],
+[data-theme="leadburro"] .bg-white\/\[0\.06\],
+[data-theme="camisinha"] .bg-white\/\[0\.02\],
+[data-theme="camisinha"] .bg-white\/\[0\.03\],
+[data-theme="camisinha"] .bg-white\/\[0\.04\],
+[data-theme="camisinha"] .bg-white\/\[0\.06\],
+[data-theme="pombo"] .bg-white\/\[0\.02\],
+[data-theme="pombo"] .bg-white\/\[0\.03\],
+[data-theme="pombo"] .bg-white\/\[0\.04\],
+[data-theme="pombo"] .bg-white\/\[0\.06\],
+[data-theme="cadeirante"] .bg-white\/\[0\.02\],
+[data-theme="cadeirante"] .bg-white\/\[0\.03\],
+[data-theme="cadeirante"] .bg-white\/\[0\.04\],
+[data-theme="cadeirante"] .bg-white\/\[0\.06\],
+[data-theme="cego"] .bg-white\/\[0\.02\],
+[data-theme="cego"] .bg-white\/\[0\.03\],
+[data-theme="cego"] .bg-white\/\[0\.04\],
+[data-theme="cego"] .bg-white\/\[0\.06\],
+[data-theme="coco"] .bg-white\/\[0\.02\],
+[data-theme="coco"] .bg-white\/\[0\.03\],
+[data-theme="coco"] .bg-white\/\[0\.04\],
+[data-theme="coco"] .bg-white\/\[0\.06\],
+[data-theme="doacao"] .bg-white\/\[0\.02\],
+[data-theme="doacao"] .bg-white\/\[0\.03\],
+[data-theme="doacao"] .bg-white\/\[0\.04\],
+[data-theme="doacao"] .bg-white\/\[0\.06\],
+[data-theme="jardim"] .bg-white\/\[0\.02\],
+[data-theme="jardim"] .bg-white\/\[0\.03\],
+[data-theme="jardim"] .bg-white\/\[0\.04\],
+[data-theme="jardim"] .bg-white\/\[0\.06\],
+[data-theme="ferrari"] .bg-white\/\[0\.02\],
+[data-theme="ferrari"] .bg-white\/\[0\.03\],
+[data-theme="ferrari"] .bg-white\/\[0\.04\],
+[data-theme="ferrari"] .bg-white\/\[0\.06\],
+[data-theme="lamborghini"] .bg-white\/\[0\.02\],
+[data-theme="lamborghini"] .bg-white\/\[0\.03\],
+[data-theme="lamborghini"] .bg-white\/\[0\.04\],
+[data-theme="lamborghini"] .bg-white\/\[0\.06\],
+[data-theme="bitcoin"] .bg-white\/\[0\.02\],
+[data-theme="bitcoin"] .bg-white\/\[0\.03\],
+[data-theme="bitcoin"] .bg-white\/\[0\.04\],
+[data-theme="bitcoin"] .bg-white\/\[0\.06\],
+[data-theme="solana"] .bg-white\/\[0\.02\],
+[data-theme="solana"] .bg-white\/\[0\.03\],
+[data-theme="solana"] .bg-white\/\[0\.04\],
+[data-theme="solana"] .bg-white\/\[0\.06\],
+[data-theme="monero"] .bg-white\/\[0\.02\],
+[data-theme="monero"] .bg-white\/\[0\.03\],
+[data-theme="monero"] .bg-white\/\[0\.04\],
+[data-theme="monero"] .bg-white\/\[0\.06\],
+[data-theme="ghosts"] .bg-white\/\[0\.02\],
+[data-theme="ghosts"] .bg-white\/\[0\.03\],
+[data-theme="ghosts"] .bg-white\/\[0\.04\],
+[data-theme="ghosts"] .bg-white\/\[0\.06\],
+[data-theme="cadeia"] .bg-white\/\[0\.02\],
+[data-theme="cadeia"] .bg-white\/\[0\.03\],
+[data-theme="cadeia"] .bg-white\/\[0\.04\],
+[data-theme="cadeia"] .bg-white\/\[0\.06\],
+[data-theme="nike"] .bg-white\/\[0\.02\],
+[data-theme="nike"] .bg-white\/\[0\.03\],
+[data-theme="nike"] .bg-white\/\[0\.04\],
+[data-theme="nike"] .bg-white\/\[0\.06\],
+[data-theme="cacto"] .bg-white\/\[0\.02\],
+[data-theme="cacto"] .bg-white\/\[0\.03\],
+[data-theme="cacto"] .bg-white\/\[0\.04\],
+[data-theme="cacto"] .bg-white\/\[0\.06\],
+[data-theme="kiwify"] .bg-white\/\[0\.02\],
+[data-theme="kiwify"] .bg-white\/\[0\.03\],
+[data-theme="kiwify"] .bg-white\/\[0\.04\],
+[data-theme="kiwify"] .bg-white\/\[0\.06\],
+[data-theme="canetaazul"] .bg-white\/\[0\.02\],
+[data-theme="canetaazul"] .bg-white\/\[0\.03\],
+[data-theme="canetaazul"] .bg-white\/\[0\.04\],
+[data-theme="canetaazul"] .bg-white\/\[0\.06\],
+[data-theme="robin"] .bg-white\/\[0\.02\],
+[data-theme="robin"] .bg-white\/\[0\.03\],
+[data-theme="robin"] .bg-white\/\[0\.04\],
+[data-theme="robin"] .bg-white\/\[0\.06\],
+[data-theme="southpark"] .bg-white\/\[0\.02\],
+[data-theme="southpark"] .bg-white\/\[0\.03\],
+[data-theme="southpark"] .bg-white\/\[0\.04\],
+[data-theme="southpark"] .bg-white\/\[0\.06\],
+[data-theme="apenasumshow"] .bg-white\/\[0\.02\],
+[data-theme="apenasumshow"] .bg-white\/\[0\.03\],
+[data-theme="apenasumshow"] .bg-white\/\[0\.04\],
+[data-theme="apenasumshow"] .bg-white\/\[0\.06\],
+[data-theme="chaves"] .bg-white\/\[0\.02\],
+[data-theme="chaves"] .bg-white\/\[0\.03\],
+[data-theme="chaves"] .bg-white\/\[0\.04\],
+[data-theme="chaves"] .bg-white\/\[0\.06\],
+[data-theme="monica"] .bg-white\/\[0\.02\],
+[data-theme="monica"] .bg-white\/\[0\.03\],
+[data-theme="monica"] .bg-white\/\[0\.04\],
+[data-theme="monica"] .bg-white\/\[0\.06\],
+[data-theme="lacasadepapel"] .bg-white\/\[0\.02\],
+[data-theme="lacasadepapel"] .bg-white\/\[0\.03\],
+[data-theme="lacasadepapel"] .bg-white\/\[0\.04\],
+[data-theme="lacasadepapel"] .bg-white\/\[0\.06\],
+[data-theme="tiopatinhas"] .bg-white\/\[0\.02\],
+[data-theme="tiopatinhas"] .bg-white\/\[0\.03\],
+[data-theme="tiopatinhas"] .bg-white\/\[0\.04\],
+[data-theme="tiopatinhas"] .bg-white\/\[0\.06\],
+[data-theme="monalisa"] .bg-white\/\[0\.02\],
+[data-theme="monalisa"] .bg-white\/\[0\.03\],
+[data-theme="monalisa"] .bg-white\/\[0\.04\],
+[data-theme="monalisa"] .bg-white\/\[0\.06\],
+[data-theme="suits"] .bg-white\/\[0\.02\],
+[data-theme="suits"] .bg-white\/\[0\.03\],
+[data-theme="suits"] .bg-white\/\[0\.04\],
+[data-theme="suits"] .bg-white\/\[0\.06\],
+[data-theme="breakingbad"] .bg-white\/\[0\.02\],
+[data-theme="breakingbad"] .bg-white\/\[0\.03\],
+[data-theme="breakingbad"] .bg-white\/\[0\.04\],
+[data-theme="breakingbad"] .bg-white\/\[0\.06\],
+[data-theme="lgbt"] .bg-white\/\[0\.02\],
+[data-theme="lgbt"] .bg-white\/\[0\.03\],
+[data-theme="lgbt"] .bg-white\/\[0\.04\],
+[data-theme="lgbt"] .bg-white\/\[0\.06\],
+[data-theme="uber"] .bg-white\/\[0\.02\],
+[data-theme="uber"] .bg-white\/\[0\.03\],
+[data-theme="uber"] .bg-white\/\[0\.03\],
+[data-theme="uber"] .bg-white\/\[0\.04\],
+[data-theme="uber"] .bg-white\/\[0\.06\],
+[data-theme="99pop"] .bg-white\/\[0\.02\],
+[data-theme="99pop"] .bg-white\/\[0\.03\],
+[data-theme="99pop"] .bg-white\/\[0\.04\],
+[data-theme="99pop"] .bg-white\/\[0\.06\],
+[data-theme="ifood"] .bg-white\/\[0\.02\],
+[data-theme="ifood"] .bg-white\/\[0\.03\],
+[data-theme="ifood"] .bg-white\/\[0\.04\],
+[data-theme="ifood"] .bg-white\/\[0\.06\],
+[data-theme="atacadao"] .bg-white\/\[0\.02\],
+[data-theme="atacadao"] .bg-white\/\[0\.03\],
+[data-theme="atacadao"] .bg-white\/\[0\.04\],
+[data-theme="atacadao"] .bg-white\/\[0\.06\],
+[data-theme="motoboy"] .bg-white\/\[0\.02\],
+[data-theme="motoboy"] .bg-white\/\[0\.03\],
+[data-theme="motoboy"] .bg-white\/\[0\.04\],
+[data-theme="motoboy"] .bg-white\/\[0\.06\],
+[data-theme="natal"] .bg-white\/\[0\.02\],
+[data-theme="natal"] .bg-white\/\[0\.03\],
+[data-theme="natal"] .bg-white\/\[0\.04\],
+[data-theme="natal"] .bg-white\/\[0\.06\],
+[data-theme="minions"] .bg-white\/\[0\.02\],
+[data-theme="minions"] .bg-white\/\[0\.03\],
+[data-theme="minions"] .bg-white\/\[0\.04\],
+[data-theme="minions"] .bg-white\/\[0\.06\],
+[data-theme="vector"] .bg-white\/\[0\.02\],
+[data-theme="vector"] .bg-white\/\[0\.03\],
+[data-theme="vector"] .bg-white\/\[0\.04\],
+[data-theme="vector"] .bg-white\/\[0\.06\],
+[data-theme="joker"] .bg-white\/\[0\.02\],
+[data-theme="joker"] .bg-white\/\[0\.03\],
+[data-theme="joker"] .bg-white\/\[0\.04\],
+[data-theme="joker"] .bg-white\/\[0\.06\],
+[data-theme="freefire"] .bg-white\/\[0\.02\],
+[data-theme="freefire"] .bg-white\/\[0\.03\],
+[data-theme="freefire"] .bg-white\/\[0\.04\],
+[data-theme="freefire"] .bg-white\/\[0\.06\],
+[data-theme="fortnite"] .bg-white\/\[0\.02\],
+[data-theme="fortnite"] .bg-white\/\[0\.03\],
+[data-theme="fortnite"] .bg-white\/\[0\.04\],
+[data-theme="fortnite"] .bg-white\/\[0\.06\],
+[data-theme="simpsons"] .bg-white\/\[0\.02\],
+[data-theme="simpsons"] .bg-white\/\[0\.03\],
+[data-theme="simpsons"] .bg-white\/\[0\.04\],
+[data-theme="simpsons"] .bg-white\/\[0\.06\],
+[data-theme="bobesponja"] .bg-white\/\[0\.02\],
+[data-theme="bobesponja"] .bg-white\/\[0\.03\],
+[data-theme="bobesponja"] .bg-white\/\[0\.04\],
+[data-theme="bobesponja"] .bg-white\/\[0\.06\],
+[data-theme="valorant"] .bg-white\/\[0\.02\],
+[data-theme="valorant"] .bg-white\/\[0\.03\],
+[data-theme="valorant"] .bg-white\/\[0\.04\],
+[data-theme="valorant"] .bg-white\/\[0\.06\],
+[data-theme="steven"] .bg-white\/\[0\.02\],
+[data-theme="steven"] .bg-white\/\[0\.03\],
+[data-theme="steven"] .bg-white\/\[0\.04\],
+[data-theme="steven"] .bg-white\/\[0\.06\],
+[data-theme="mariobros"] .bg-white\/\[0\.02\],
+[data-theme="mariobros"] .bg-white\/\[0\.03\],
+[data-theme="mariobros"] .bg-white\/\[0\.04\],
+[data-theme="mariobros"] .bg-white\/\[0\.06\],
+[data-theme="naruto"] .bg-white\/\[0\.02\],
+[data-theme="naruto"] .bg-white\/\[0\.03\],
+[data-theme="naruto"] .bg-white\/\[0\.04\],
+[data-theme="naruto"] .bg-white\/\[0\.06\] {
+  background-color: rgba(10, 10, 10, 0.88) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Sidebar e Topbar — também precisam ser sólidos */
+[data-theme]:not([data-theme="midnight"]):not([data-theme="daylight"]):not([data-theme="matrix"]):not([data-theme="gamer"]):not([data-theme="glass"]):not([data-theme="sunset"]):not([data-theme="ocean"]):not([data-theme="minimal"]) aside.bg-black\/40,
+[data-theme]:not([data-theme="midnight"]):not([data-theme="daylight"]):not([data-theme="matrix"]):not([data-theme="gamer"]):not([data-theme="glass"]):not([data-theme="sunset"]):not([data-theme="ocean"]):not([data-theme="minimal"]) header.bg-black\/30,
+[data-theme]:not([data-theme="midnight"]):not([data-theme="daylight"]):not([data-theme="matrix"]):not([data-theme="gamer"]):not([data-theme="glass"]):not([data-theme="sunset"]):not([data-theme="ocean"]):not([data-theme="minimal"]) header.bg-black\/60 {
+  background-color: rgba(10, 10, 10, 0.92) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Para temas LIGHT (hellokitty, monica, southpark, google, uber, nike, japao, praia)
+   o card é claro em vez de escuro */
+[data-theme="hellokitty"] .bg-white\/\[0\.02\],
+[data-theme="hellokitty"] .bg-white\/\[0\.03\],
+[data-theme="hellokitty"] .bg-white\/\[0\.04\],
+[data-theme="hellokitty"] .bg-white\/\[0\.06\],
+[data-theme="monica"] .bg-white\/\[0\.02\],
+[data-theme="monica"] .bg-white\/\[0\.03\],
+[data-theme="monica"] .bg-white\/\[0\.04\],
+[data-theme="monica"] .bg-white\/\[0\.06\],
+[data-theme="southpark"] .bg-white\/\[0\.02\],
+[data-theme="southpark"] .bg-white\/\[0\.03\],
+[data-theme="southpark"] .bg-white\/\[0\.04\],
+[data-theme="southpark"] .bg-white\/\[0\.06\],
+[data-theme="google"] .bg-white\/\[0\.02\],
+[data-theme="google"] .bg-white\/\[0\.03\],
+[data-theme="google"] .bg-white\/\[0\.04\],
+[data-theme="google"] .bg-white\/\[0\.06\],
+[data-theme="uber"] .bg-white\/\[0\.02\],
+[data-theme="uber"] .bg-white\/\[0\.03\],
+[data-theme="uber"] .bg-white\/\[0\.04\],
+[data-theme="uber"] .bg-white\/\[0\.06\],
+[data-theme="nike"] .bg-white\/\[0\.02\],
+[data-theme="nike"] .bg-white\/\[0\.03\],
+[data-theme="nike"] .bg-white\/\[0\.04\],
+[data-theme="nike"] .bg-white\/\[0\.06\],
+[data-theme="japao"] .bg-white\/\[0\.02\],
+[data-theme="japao"] .bg-white\/\[0\.03\],
+[data-theme="japao"] .bg-white\/\[0\.04\],
+[data-theme="japao"] .bg-white\/\[0\.06\],
+[data-theme="praia"] .bg-white\/\[0\.02\],
+[data-theme="praia"] .bg-white\/\[0\.03\],
+[data-theme="praia"] .bg-white\/\[0\.04\],
+[data-theme="praia"] .bg-white\/\[0\.06\] {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Sidebar/topbar light pra esses temas */
+[data-theme="hellokitty"] aside.bg-black\/40,
+[data-theme="monica"] aside.bg-black\/40,
+[data-theme="southpark"] aside.bg-black\/40,
+[data-theme="google"] aside.bg-black\/40,
+[data-theme="uber"] aside.bg-black\/40,
+[data-theme="nike"] aside.bg-black\/40,
+[data-theme="japao"] aside.bg-black\/40,
+[data-theme="praia"] aside.bg-black\/40,
+[data-theme="hellokitty"] header.bg-black\/30,
+[data-theme="monica"] header.bg-black\/30,
+[data-theme="southpark"] header.bg-black\/30,
+[data-theme="google"] header.bg-black\/30,
+[data-theme="uber"] header.bg-black\/30,
+[data-theme="nike"] header.bg-black\/30,
+[data-theme="japao"] header.bg-black\/30,
+[data-theme="praia"] header.bg-black\/30,
+[data-theme="hellokitty"] header.bg-black\/60,
+[data-theme="monica"] header.bg-black\/60,
+[data-theme="southpark"] header.bg-black\/60,
+[data-theme="google"] header.bg-black\/60,
+[data-theme="uber"] header.bg-black\/60,
+[data-theme="nike"] header.bg-black\/60,
+[data-theme="japao"] header.bg-black\/60,
+[data-theme="praia"] header.bg-black\/60 {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ============================================================
+   KUSH DELA — Mordecai + lifestyle worldwide $$$
+   ============================================================ */
+[data-theme="kushdela"] {
+  --tp-bg: #0a1733;
+  --tp-card: rgba(59,130,246,0.10);
+  --tp-fg: #dbeafe;
+  --tp-accent: #fbbf24;
+  --tp-accent-soft: rgba(251,191,36,0.22);
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(251,191,36,0.12), transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(59,130,246,0.18), transparent 50%),
+    linear-gradient(180deg, #152a52 0%, #0a1733 100%) !important;
+}
+[data-theme="kushdela"] .text-cyan-300,
+[data-theme="kushdela"] .text-cyan-400 {
+  color: #fbbf24 !important;
+  text-shadow: 0 0 8px rgba(251,191,36,0.5);
+}
+[data-theme="kushdela"] .bg-cyan-400 {
+  background: #fbbf24 !important;
+  color: #0a1733 !important;
+}
+[data-theme="kushdela"] .bg-white\/\[0\.02\],
+[data-theme="kushdela"] .bg-white\/\[0\.03\],
+[data-theme="kushdela"] .bg-white\/\[0\.04\],
+[data-theme="kushdela"] .bg-white\/\[0\.06\] {
+  background-color: rgba(10,23,51,0.88) !important;
+  backdrop-filter: blur(10px);
+}
+
+/* ============================================================
+   ZENY — Rigby + cybersecurity swag
+   ============================================================ */
+[data-theme="zeny"] {
+  --tp-bg: #1a0a0a;
+  --tp-card: rgba(220,38,38,0.10);
+  --tp-fg: #fecaca;
+  --tp-accent: #22c55e;
+  --tp-accent-soft: rgba(34,197,94,0.22);
+  background:
+    radial-gradient(ellipse at 30% 30%, rgba(34,197,94,0.10), transparent 50%),
+    radial-gradient(ellipse at 70% 70%, rgba(220,38,38,0.16), transparent 50%),
+    linear-gradient(180deg, #2a1010 0%, #1a0a0a 100%) !important;
+}
+[data-theme="zeny"] .text-cyan-300,
+[data-theme="zeny"] .text-cyan-400 {
+  color: #22c55e !important;
+  text-shadow: 0 0 6px rgba(34,197,94,0.4);
+  font-family: 'Courier New', monospace;
+}
+[data-theme="zeny"] .bg-cyan-400 {
+  background: #22c55e !important;
+  color: #0a0a0a !important;
+}
+[data-theme="zeny"] .bg-white\/\[0\.02\],
+[data-theme="zeny"] .bg-white\/\[0\.03\],
+[data-theme="zeny"] .bg-white\/\[0\.04\],
+[data-theme="zeny"] .bg-white\/\[0\.06\] {
+  background-color: rgba(20,10,10,0.90) !important;
+  backdrop-filter: blur(10px);
+}
+
+/* ============================================================
+   TONY ECOM — Homem-Aranha Black (Simbionte)
+   ============================================================ */
+[data-theme="thonyecom"] {
+  --tp-bg: #000000;
+  --tp-card: rgba(255,255,255,0.04);
+  --tp-fg: #fafafa;
+  --tp-accent: #fafafa;
+  --tp-accent-soft: rgba(255,255,255,0.12);
+  /* Padrão de teia tileável de fundo (cobre tela toda) + gradientes ambient */
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'><g stroke='%23ffffff' stroke-width='0.5' fill='none' opacity='0.18' stroke-linecap='round'><line x1='90' y1='0' x2='90' y2='180'/><line x1='0' y1='90' x2='180' y2='90'/><line x1='0' y1='0' x2='180' y2='180'/><line x1='180' y1='0' x2='0' y2='180'/><circle cx='90' cy='90' r='24'/><circle cx='90' cy='90' r='48'/><circle cx='90' cy='90' r='72'/><path d='M 70 0 Q 55 55 0 70'/><path d='M 110 0 Q 125 55 180 70'/><path d='M 70 180 Q 55 125 0 110'/><path d='M 110 180 Q 125 125 180 110'/></g></svg>"),
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,0.05), transparent 50%),
+    radial-gradient(circle at 70% 80%, rgba(22,163,74,0.06), transparent 50%),
+    linear-gradient(180deg, #0a0a0a 0%, #000000 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed !important;
+}
+[data-theme="thonyecom"] .text-cyan-300,
+[data-theme="thonyecom"] .text-cyan-400 {
+  color: #fafafa !important;
+  text-shadow: 0 0 8px rgba(255,255,255,0.4);
+}
+[data-theme="thonyecom"] .bg-cyan-400 {
+  background: #fafafa !important;
+  color: #000000 !important;
+}
+[data-theme="thonyecom"] .bg-white\/\[0\.02\],
+[data-theme="thonyecom"] .bg-white\/\[0\.03\],
+[data-theme="thonyecom"] .bg-white\/\[0\.04\],
+[data-theme="thonyecom"] .bg-white\/\[0\.06\] {
+  background-color: rgba(0,0,0,0.92) !important;
+  backdrop-filter: blur(10px);
+  border-color: rgba(255,255,255,0.08) !important;
+}
+
+/* ============================================================
+   TWS — Esmeralda + ouro + diamantes (luxury wealth)
+   ============================================================ */
+[data-theme="tws"] {
+  --tp-bg: #022c22;
+  --tp-card: rgba(251,191,36,0.10);
+  --tp-fg: #fef9c3;
+  --tp-accent: #facc15;
+  --tp-accent-soft: rgba(250,204,21,0.25);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(251,191,36,0.10), transparent 50%),
+    radial-gradient(circle at 70% 80%, rgba(16,185,129,0.12), transparent 50%),
+    linear-gradient(135deg, #064e3b 0%, #022c22 100%) !important;
+}
+[data-theme="tws"] .text-cyan-300,
+[data-theme="tws"] .text-cyan-400 {
+  color: #facc15 !important;
+  text-shadow: 0 0 6px rgba(250,204,21,0.5);
+}
+[data-theme="tws"] .bg-cyan-400 {
+  background: #facc15 !important;
+  color: #022c22 !important;
+}
+[data-theme="tws"] .bg-white\/\[0\.02\],
+[data-theme="tws"] .bg-white\/\[0\.03\],
+[data-theme="tws"] .bg-white\/\[0\.04\],
+[data-theme="tws"] .bg-white\/\[0\.06\] {
+  background-color: rgba(2,44,34,0.92) !important;
+  backdrop-filter: blur(10px);
+}
+
+/* ============================================================
+   BLAME — Monster Ultra White (energético gelado)
+   ============================================================ */
+[data-theme="blame"] {
+  --tp-bg: #020617;
+  --tp-card: rgba(59,130,246,0.10);
+  --tp-fg: #dbeafe;
+  --tp-accent: #3b82f6;
+  --tp-accent-soft: rgba(59,130,246,0.22);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(191,219,254,0.10), transparent 50%),
+    radial-gradient(circle at 70% 80%, rgba(59,130,246,0.16), transparent 50%),
+    linear-gradient(180deg, #0f172a 0%, #020617 100%) !important;
+}
+[data-theme="blame"] .text-cyan-300,
+[data-theme="blame"] .text-cyan-400 {
+  color: #3b82f6 !important;
+  text-shadow: 0 0 8px rgba(59,130,246,0.5);
+}
+[data-theme="blame"] .bg-cyan-400 {
+  background: #3b82f6 !important;
+  color: #fafafa !important;
+}
+[data-theme="blame"] .bg-white\/\[0\.02\],
+[data-theme="blame"] .bg-white\/\[0\.03\],
+[data-theme="blame"] .bg-white\/\[0\.04\],
+[data-theme="blame"] .bg-white\/\[0\.06\] {
+  background-color: rgba(2,6,23,0.92) !important;
+  backdrop-filter: blur(10px);
+}
+
+[data-theme="tiltado"] {
+  --tp-bg: #1a0202;
+  --tp-card: rgba(220,38,38,0.12);
+  --tp-fg: #fecaca;
+  --tp-accent: #dc2626;
+  --tp-accent-soft: rgba(220,38,38,0.22);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><g opacity='0.10'><text x='30' y='50' font-family='sans-serif' font-weight='900' font-size='28' fill='%23dc2626' transform='rotate(-15 30 50)'>%23%40%24%21%25</text><text x='110' y='130' font-family='sans-serif' font-weight='900' font-size='24' fill='%23fbbf24' transform='rotate(18 110 130)'>%23%40%24%21</text><text x='40' y='170' font-family='sans-serif' font-weight='900' font-size='22' fill='%23dc2626' transform='rotate(-8 40 170)'>%24%25%23%21</text><text x='130' y='40' font-family='sans-serif' font-weight='900' font-size='20' fill='%23fbbf24' transform='rotate(12 130 40)'>%21%25%40</text></g></svg>"),
+    radial-gradient(circle at 30% 20%, rgba(251,146,60,0.20), transparent 50%),
+    radial-gradient(circle at 70% 80%, rgba(220,38,38,0.28), transparent 50%),
+    linear-gradient(180deg, #2a0606 0%, #0a0000 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed !important;
+}
+[data-theme="tiltado"] .text-cyan-300,
+[data-theme="tiltado"] .text-cyan-400 {
+  color: #dc2626 !important;
+  text-shadow: 0 0 10px rgba(220,38,38,0.7);
+}
+[data-theme="tiltado"] .bg-cyan-400 {
+  background: linear-gradient(135deg, #dc2626 0%, #fbbf24 100%) !important;
+  color: #fafafa !important;
+}
+[data-theme="tiltado"] .bg-white\/\[0\.02\],
+[data-theme="tiltado"] .bg-white\/\[0\.03\],
+[data-theme="tiltado"] .bg-white\/\[0\.04\],
+[data-theme="tiltado"] .bg-white\/\[0\.06\] {
+  background-color: rgba(26,2,2,0.92) !important;
+  backdrop-filter: blur(10px);
+}
+[data-theme="tiltado"] .border-cyan-400\/20,
+[data-theme="tiltado"] .border-cyan-400\/30,
+[data-theme="tiltado"] .border-cyan-400\/40 {
+  border-color: rgba(220,38,38,0.5) !important;
+}
+
+/* ===== KAUE ESCALUDO — tudo azul + Audi + cash ===== */
+[data-theme="kaue"] {
+  --tp-bg: #020a1a;
+  --tp-card: rgba(59,130,246,0.10);
+  --tp-fg: #dbeafe;
+  --tp-accent: #3b82f6;
+  --tp-accent-soft: rgba(59,130,246,0.22);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><g opacity='0.08' fill='none' stroke='%233b82f6' stroke-width='2'><circle cx='40' cy='40' r='12'/><circle cx='60' cy='40' r='12'/><circle cx='80' cy='40' r='12'/><circle cx='100' cy='40' r='12'/><circle cx='140' cy='160' r='12'/><circle cx='160' cy='160' r='12'/><circle cx='180' cy='160' r='12'/><circle cx='200' cy='160' r='12'/></g><g opacity='0.10'><text x='30' y='130' font-family='serif' font-weight='900' font-size='44' fill='%233b82f6' transform='rotate(-15 30 130)'>$</text><text x='150' y='80' font-family='serif' font-weight='900' font-size='38' fill='%231e40af' transform='rotate(20 150 80)'>$</text></g></svg>"),
+    radial-gradient(circle at 30% 20%, rgba(59,130,246,0.30), transparent 50%),
+    radial-gradient(circle at 70% 80%, rgba(30,58,138,0.30), transparent 55%),
+    linear-gradient(180deg, #0a1733 0%, #020410 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed !important;
+}
+[data-theme="kaue"] .text-cyan-300,
+[data-theme="kaue"] .text-cyan-400 {
+  color: #60a5fa !important;
+  text-shadow: 0 0 10px rgba(59,130,246,0.7);
+}
+[data-theme="kaue"] .bg-cyan-400 {
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%) !important;
+  color: #fafafa !important;
+}
+[data-theme="kaue"] .bg-white\/\[0\.02\],
+[data-theme="kaue"] .bg-white\/\[0\.03\],
+[data-theme="kaue"] .bg-white\/\[0\.04\],
+[data-theme="kaue"] .bg-white\/\[0\.06\] {
+  background-color: rgba(2,10,26,0.92) !important;
+  backdrop-filter: blur(10px);
+}
+[data-theme="kaue"] .border-cyan-400\/20,
+[data-theme="kaue"] .border-cyan-400\/30,
+[data-theme="kaue"] .border-cyan-400\/40 {
+  border-color: rgba(59,130,246,0.5) !important;
+}
+
+/* ===== SIMAS KID — cash + vape + pílulas + fumaça ===== */
+[data-theme="simas"] {
+  --tp-bg: #0a0a14;
+  --tp-card: rgba(168,85,247,0.10);
+  --tp-fg: #e9d5ff;
+  --tp-accent: #a855f7;
+  --tp-accent-soft: rgba(168,85,247,0.22);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'><g opacity='0.10'><ellipse cx='60' cy='80' rx='40' ry='22' fill='%23a855f7'/><ellipse cx='180' cy='160' rx='44' ry='24' fill='%23c084fc'/><ellipse cx='40' cy='200' rx='30' ry='18' fill='%23ddd6fe'/><ellipse cx='200' cy='40' rx='32' ry='20' fill='%23a855f7'/></g><g opacity='0.14'><text x='90' y='130' font-family='serif' font-weight='900' font-size='44' fill='%23facc15' transform='rotate(18 90 130)'>$</text><text x='30' y='40' font-family='serif' font-weight='900' font-size='34' fill='%2322c55e' transform='rotate(-10 30 40)'>$</text></g></svg>"),
+    radial-gradient(circle at 30% 30%, rgba(168,85,247,0.32), transparent 50%),
+    radial-gradient(circle at 70% 70%, rgba(236,72,153,0.22), transparent 55%),
+    linear-gradient(180deg, #1a0a2e 0%, #000010 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed !important;
+}
+[data-theme="simas"] .text-cyan-300,
+[data-theme="simas"] .text-cyan-400 {
+  color: #c084fc !important;
+  text-shadow: 0 0 10px rgba(168,85,247,0.7);
+}
+[data-theme="simas"] .bg-cyan-400 {
+  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%) !important;
+  color: #fafafa !important;
+}
+[data-theme="simas"] .bg-white\/\[0\.02\],
+[data-theme="simas"] .bg-white\/\[0\.03\],
+[data-theme="simas"] .bg-white\/\[0\.04\],
+[data-theme="simas"] .bg-white\/\[0\.06\] {
+  background-color: rgba(10,10,20,0.92) !important;
+  backdrop-filter: blur(10px);
+}
+[data-theme="simas"] .border-cyan-400\/20,
+[data-theme="simas"] .border-cyan-400\/30,
+[data-theme="simas"] .border-cyan-400\/40 {
+  border-color: rgba(168,85,247,0.5) !important;
+}
+
+/* ===== JAPA LUCA — bandeira do Japão + Fielder ===== */
+[data-theme="japa"] {
+  --tp-bg: #1a0a0a;
+  --tp-card: rgba(220,38,38,0.10);
+  --tp-fg: #fee2e2;
+  --tp-accent: #dc2626;
+  --tp-accent-soft: rgba(220,38,38,0.22);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><g opacity='0.10'><rect x='20' y='30' width='60' height='40' fill='%23fafafa' stroke='%230a0a0a' stroke-width='0.5'/><circle cx='50' cy='50' r='12' fill='%23dc2626'/><rect x='120' y='140' width='60' height='40' fill='%23fafafa' stroke='%230a0a0a' stroke-width='0.5'/><circle cx='150' cy='160' r='12' fill='%23dc2626'/></g></svg>"),
+    radial-gradient(circle at 50% 20%, rgba(220,38,38,0.28), transparent 55%),
+    radial-gradient(circle at 50% 80%, rgba(250,250,250,0.10), transparent 50%),
+    linear-gradient(180deg, #2a0606 0%, #0a0000 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed !important;
+}
+[data-theme="japa"] .text-cyan-300,
+[data-theme="japa"] .text-cyan-400 {
+  color: #fafafa !important;
+  text-shadow: 0 0 10px rgba(220,38,38,0.7);
+}
+[data-theme="japa"] .bg-cyan-400 {
+  background: #dc2626 !important;
+  color: #fafafa !important;
+}
+[data-theme="japa"] .bg-white\/\[0\.02\],
+[data-theme="japa"] .bg-white\/\[0\.03\],
+[data-theme="japa"] .bg-white\/\[0\.04\],
+[data-theme="japa"] .bg-white\/\[0\.06\] {
+  background-color: rgba(26,10,10,0.92) !important;
+  backdrop-filter: blur(10px);
+}
+[data-theme="japa"] .border-cyan-400\/20,
+[data-theme="japa"] .border-cyan-400\/30,
+[data-theme="japa"] .border-cyan-400\/40 {
+  border-color: rgba(220,38,38,0.5) !important;
+}
+
+/* ===== DAVI.COPY — copy master, premium, surprise theme ===== */
+[data-theme="davicopy"] {
+  --tp-bg: #050a08;
+  --tp-card: rgba(251,191,36,0.10);
+  --tp-fg: #fef3c7;
+  --tp-accent: #fbbf24;
+  --tp-accent-soft: rgba(251,191,36,0.22);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'><g opacity='0.08'><text x='20' y='40' font-family='sans-serif' font-weight='900' font-size='22' fill='%23fbbf24' transform='rotate(-12 20 40)'>COMPRE AGORA</text><text x='220' y='90' font-family='sans-serif' font-weight='900' font-size='20' fill='%23dc2626' transform='rotate(8 220 90)'>%C3%9ALTIMAS HORAS</text><text x='50' y='160' font-family='sans-serif' font-weight='900' font-size='24' fill='%2310b981' transform='rotate(-6 50 160)'>PIX %2B R%24 1.997</text><text x='250' y='200' font-family='serif' font-style='italic' font-weight='900' font-size='26' fill='%23fef3c7' transform='rotate(4 250 200)'>voc%C3%AA merece</text><text x='30' y='270' font-family='sans-serif' font-weight='900' font-size='22' fill='%23fbbf24' transform='rotate(10 30 270)'>GARANTIA 7 DIAS</text><text x='220' y='320' font-family='sans-serif' font-weight='900' font-size='28' fill='%2310b981' transform='rotate(-8 220 320)'>%2BR%24 497</text><text x='60' y='370' font-family='sans-serif' font-weight='900' font-size='20' fill='%23dc2626' transform='rotate(6 60 370)'>OFERTA RELAMPAGO</text><text x='280' y='40' font-family='serif' font-weight='900' font-size='40' fill='%23fbbf24'>%24</text><text x='160' y='250' font-family='serif' font-weight='900' font-size='36' fill='%23fbbf24' opacity='0.7'>%24</text><text x='350' y='150' font-family='serif' font-weight='900' font-size='32' fill='%23fbbf24'>%24</text></g></svg>"),
+    radial-gradient(circle at 25% 25%, rgba(251,191,36,0.22), transparent 50%),
+    radial-gradient(circle at 75% 75%, rgba(16,185,129,0.18), transparent 55%),
+    radial-gradient(circle at 50% 100%, rgba(220,38,38,0.10), transparent 60%),
+    linear-gradient(180deg, #0a1a14 0%, #000000 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed, fixed !important;
+}
+[data-theme="davicopy"] .text-cyan-300,
+[data-theme="davicopy"] .text-cyan-400 {
+  color: #fbbf24 !important;
+  text-shadow:
+    0 0 8px rgba(251,191,36,0.8),
+    0 0 16px rgba(251,191,36,0.4);
+}
+[data-theme="davicopy"] .bg-cyan-400 {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #dc2626 100%) !important;
+  color: #050a08 !important;
+  box-shadow: 0 0 20px rgba(251,191,36,0.5);
+}
+[data-theme="davicopy"] .bg-cyan-400:hover {
+  box-shadow: 0 0 30px rgba(251,191,36,0.8);
+}
+[data-theme="davicopy"] .bg-white\/\[0\.02\],
+[data-theme="davicopy"] .bg-white\/\[0\.03\],
+[data-theme="davicopy"] .bg-white\/\[0\.04\],
+[data-theme="davicopy"] .bg-white\/\[0\.06\] {
+  background: linear-gradient(135deg, rgba(10,26,20,0.94) 0%, rgba(5,10,8,0.94) 100%) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(251,191,36,0.15) !important;
+}
+[data-theme="davicopy"] .border-cyan-400\/20,
+[data-theme="davicopy"] .border-cyan-400\/30,
+[data-theme="davicopy"] .border-cyan-400\/40 {
+  border-color: rgba(251,191,36,0.5) !important;
+  box-shadow: 0 0 12px rgba(251,191,36,0.15);
+}
+/* títulos com gradient dourado */
+[data-theme="davicopy"] h1,
+[data-theme="davicopy"] h2 {
+  background: linear-gradient(135deg, #fef3c7 0%, #fbbf24 50%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ===== JV EGUDO — Top 1, troféus, ego no talo ===== */
+[data-theme="jvegudo"] {
+  --tp-bg: #0a0a05;
+  --tp-card: rgba(250,204,21,0.10);
+  --tp-fg: #fef9c3;
+  --tp-accent: #facc15;
+  --tp-accent-soft: rgba(250,204,21,0.22);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'><g opacity='0.10'><text x='30' y='100' font-family='serif' font-weight='900' font-size='90' fill='%23facc15' transform='rotate(-12 30 100)'>01</text><text x='180' y='220' font-family='serif' font-weight='900' font-size='80' fill='%23a16207' transform='rotate(10 180 220)'>01</text><text x='130' y='150' font-family='sans-serif' font-weight='900' font-size='40' fill='%23facc15'>%231</text><text x='40' y='240' font-family='sans-serif' font-weight='900' font-size='28' fill='%23facc15' transform='rotate(-8 40 240)'>GOAT</text><text x='180' y='40' font-family='sans-serif' font-weight='900' font-size='28' fill='%23a16207' transform='rotate(6 180 40)'>TOP 1</text></g></svg>"),
+    radial-gradient(circle at 30% 20%, rgba(250,204,21,0.28), transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(161,98,7,0.22), transparent 50%),
+    linear-gradient(180deg, #1a1a05 0%, #050500 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed !important;
+}
+[data-theme="jvegudo"] .text-cyan-300,
+[data-theme="jvegudo"] .text-cyan-400 {
+  color: #facc15 !important;
+  text-shadow: 0 0 10px rgba(250,204,21,0.7);
+}
+[data-theme="jvegudo"] .bg-cyan-400 {
+  background: linear-gradient(135deg, #facc15 0%, #a16207 100%) !important;
+  color: #0a0a05 !important;
+  box-shadow: 0 0 16px rgba(250,204,21,0.4);
+}
+[data-theme="jvegudo"] .bg-white\/\[0\.02\],
+[data-theme="jvegudo"] .bg-white\/\[0\.03\],
+[data-theme="jvegudo"] .bg-white\/\[0\.04\],
+[data-theme="jvegudo"] .bg-white\/\[0\.06\] {
+  background-color: rgba(10,10,5,0.94) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(250,204,21,0.15) !important;
+}
+[data-theme="jvegudo"] .border-cyan-400\/20,
+[data-theme="jvegudo"] .border-cyan-400\/30,
+[data-theme="jvegudo"] .border-cyan-400\/40 {
+  border-color: rgba(250,204,21,0.5) !important;
+}
+[data-theme="jvegudo"] h1,
+[data-theme="jvegudo"] h2 {
+  background: linear-gradient(135deg, #fef9c3 0%, #facc15 50%, #a16207 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ===== JV MULHERENGO — mesmo cara, mulheres diferentes ===== */
+[data-theme="jvmulherengo"] {
+  --tp-bg: #1a0a14;
+  --tp-card: rgba(236,72,153,0.10);
+  --tp-fg: #fce7f3;
+  --tp-accent: #ec4899;
+  --tp-accent-soft: rgba(236,72,153,0.22);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'><g opacity='0.12'><path d='M40 40 Q26 28 26 44 Q26 56 40 70 Q54 56 54 44 Q54 28 40 40 Z' fill='%23ec4899'/><path d='M180 60 Q166 48 166 64 Q166 76 180 90 Q194 76 194 64 Q194 48 180 60 Z' fill='%23ec4899'/><path d='M60 180 Q46 168 46 184 Q46 196 60 210 Q74 196 74 184 Q74 168 60 180 Z' fill='%23a855f7'/><path d='M190 190 Q176 178 176 194 Q176 206 190 220 Q204 206 204 194 Q204 178 190 190 Z' fill='%23ec4899'/></g><g opacity='0.10'><text x='100' y='130' font-family='sans-serif' font-style='italic' font-weight='700' font-size='28' fill='%23fce7f3'>xoxo</text></g></svg>"),
+    radial-gradient(circle at 30% 30%, rgba(236,72,153,0.30), transparent 55%),
+    radial-gradient(circle at 70% 70%, rgba(168,85,247,0.22), transparent 50%),
+    linear-gradient(180deg, #2a0e22 0%, #100008 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed !important;
+}
+[data-theme="jvmulherengo"] .text-cyan-300,
+[data-theme="jvmulherengo"] .text-cyan-400 {
+  color: #ec4899 !important;
+  text-shadow: 0 0 10px rgba(236,72,153,0.7);
+}
+[data-theme="jvmulherengo"] .bg-cyan-400 {
+  background: linear-gradient(135deg, #ec4899 0%, #a855f7 100%) !important;
+  color: #fafafa !important;
+  box-shadow: 0 0 14px rgba(236,72,153,0.4);
+}
+[data-theme="jvmulherengo"] .bg-white\/\[0\.02\],
+[data-theme="jvmulherengo"] .bg-white\/\[0\.03\],
+[data-theme="jvmulherengo"] .bg-white\/\[0\.04\],
+[data-theme="jvmulherengo"] .bg-white\/\[0\.06\] {
+  background-color: rgba(26,10,20,0.92) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(236,72,153,0.15) !important;
+}
+[data-theme="jvmulherengo"] .border-cyan-400\/20,
+[data-theme="jvmulherengo"] .border-cyan-400\/30,
+[data-theme="jvmulherengo"] .border-cyan-400\/40 {
+  border-color: rgba(236,72,153,0.5) !important;
+}
+
+/* ===== LORECIO — anjos loiros + academia ===== */
+[data-theme="lorecio"] {
+  --tp-bg: #0a1029; --tp-card: rgba(251,191,36,0.10); --tp-fg: #fef3c7;
+  --tp-accent: #fbbf24; --tp-accent-soft: rgba(251,191,36,0.22);
+  background:
+    radial-gradient(circle at 30% 25%, rgba(251,191,36,0.30), transparent 50%),
+    radial-gradient(circle at 70% 75%, rgba(59,130,246,0.22), transparent 55%),
+    linear-gradient(180deg, #1a2042 0%, #050a15 100%) !important;
+}
+[data-theme="lorecio"] .text-cyan-300,
+[data-theme="lorecio"] .text-cyan-400 { color: #fbbf24 !important; text-shadow: 0 0 10px rgba(251,191,36,0.7); }
+[data-theme="lorecio"] .bg-cyan-400 { background: linear-gradient(135deg, #fef3c7 0%, #fbbf24 100%) !important; color: #0a1029 !important; }
+[data-theme="lorecio"] .bg-white\/\[0\.02\],
+[data-theme="lorecio"] .bg-white\/\[0\.03\],
+[data-theme="lorecio"] .bg-white\/\[0\.04\],
+[data-theme="lorecio"] .bg-white\/\[0\.06\] { background-color: rgba(10,16,41,0.92) !important; backdrop-filter: blur(10px); }
+[data-theme="lorecio"] .border-cyan-400\/20,
+[data-theme="lorecio"] .border-cyan-400\/30,
+[data-theme="lorecio"] .border-cyan-400\/40 { border-color: rgba(251,191,36,0.5) !important; }
+
+/* ===== LEO CHICKEN — galinhas + alcool + loiro ===== */
+[data-theme="leochicken"] {
+  --tp-bg: #1a0d00; --tp-card: rgba(249,115,22,0.10); --tp-fg: #fed7aa;
+  --tp-accent: #f97316; --tp-accent-soft: rgba(249,115,22,0.22);
+  background:
+    radial-gradient(circle at 30% 25%, rgba(249,115,22,0.30), transparent 50%),
+    radial-gradient(circle at 70% 75%, rgba(217,119,6,0.22), transparent 55%),
+    linear-gradient(180deg, #2e1700 0%, #050200 100%) !important;
+}
+[data-theme="leochicken"] .text-cyan-300,
+[data-theme="leochicken"] .text-cyan-400 { color: #f97316 !important; text-shadow: 0 0 10px rgba(249,115,22,0.7); }
+[data-theme="leochicken"] .bg-cyan-400 { background: linear-gradient(135deg, #facc15 0%, #f97316 100%) !important; color: #1a0d00 !important; }
+[data-theme="leochicken"] .bg-white\/\[0\.02\],
+[data-theme="leochicken"] .bg-white\/\[0\.03\],
+[data-theme="leochicken"] .bg-white\/\[0\.04\],
+[data-theme="leochicken"] .bg-white\/\[0\.06\] { background-color: rgba(26,13,0,0.92) !important; backdrop-filter: blur(10px); }
+[data-theme="leochicken"] .border-cyan-400\/20,
+[data-theme="leochicken"] .border-cyan-400\/30,
+[data-theme="leochicken"] .border-cyan-400\/40 { border-color: rgba(249,115,22,0.5) !important; }
+
+/* ===== AZZI — carro batido + saque 1M ===== */
+[data-theme="azzi"] {
+  --tp-bg: #020817; --tp-card: rgba(16,185,129,0.10); --tp-fg: #bbf7d0;
+  --tp-accent: #10b981; --tp-accent-soft: rgba(16,185,129,0.22);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320' viewBox='0 0 320 320'><g opacity='0.10'><text x='30' y='100' font-family='sans-serif' font-weight='900' font-size='32' fill='%2310b981' transform='rotate(-10 30 100)'>R%24 1.000.000</text><text x='170' y='200' font-family='sans-serif' font-weight='900' font-size='28' fill='%23facc15' transform='rotate(8 170 200)'>SAQUE</text><text x='40' y='280' font-family='sans-serif' font-weight='900' font-size='24' fill='%2310b981' transform='rotate(-5 40 280)'>1M</text></g></svg>"),
+    radial-gradient(circle at 30% 25%, rgba(220,38,38,0.20), transparent 50%),
+    radial-gradient(circle at 70% 75%, rgba(16,185,129,0.22), transparent 55%),
+    linear-gradient(180deg, #0a142e 0%, #000005 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed !important;
+}
+[data-theme="azzi"] .text-cyan-300,
+[data-theme="azzi"] .text-cyan-400 { color: #10b981 !important; text-shadow: 0 0 10px rgba(16,185,129,0.7); }
+[data-theme="azzi"] .bg-cyan-400 { background: linear-gradient(135deg, #facc15 0%, #10b981 100%) !important; color: #020817 !important; }
+[data-theme="azzi"] .bg-white\/\[0\.02\],
+[data-theme="azzi"] .bg-white\/\[0\.03\],
+[data-theme="azzi"] .bg-white\/\[0\.04\],
+[data-theme="azzi"] .bg-white\/\[0\.06\] { background-color: rgba(2,8,23,0.92) !important; backdrop-filter: blur(10px); }
+[data-theme="azzi"] .border-cyan-400\/20,
+[data-theme="azzi"] .border-cyan-400\/30,
+[data-theme="azzi"] .border-cyan-400\/40 { border-color: rgba(16,185,129,0.5) !important; }
+
+/* ===== DAVI CHEN — Japa + cash + burger ===== */
+[data-theme="davichen"] {
+  --tp-bg: #1a0a05; --tp-card: rgba(220,38,38,0.10); --tp-fg: #fed7aa;
+  --tp-accent: #dc2626; --tp-accent-soft: rgba(220,38,38,0.22);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><g opacity='0.10'><rect x='30' y='40' width='50' height='32' fill='%23fafafa'/><circle cx='55' cy='56' r='10' fill='%23dc2626'/><rect x='120' y='150' width='50' height='32' fill='%23fafafa'/><circle cx='145' cy='166' r='10' fill='%23dc2626'/></g></svg>"),
+    radial-gradient(circle at 30% 20%, rgba(220,38,38,0.30), transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(245,158,11,0.22), transparent 50%),
+    linear-gradient(180deg, #2a1208 0%, #050200 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed !important;
+}
+[data-theme="davichen"] .text-cyan-300,
+[data-theme="davichen"] .text-cyan-400 { color: #f59e0b !important; text-shadow: 0 0 10px rgba(245,158,11,0.7); }
+[data-theme="davichen"] .bg-cyan-400 { background: linear-gradient(135deg, #dc2626 0%, #f59e0b 100%) !important; color: #fafafa !important; }
+[data-theme="davichen"] .bg-white\/\[0\.02\],
+[data-theme="davichen"] .bg-white\/\[0\.03\],
+[data-theme="davichen"] .bg-white\/\[0\.04\],
+[data-theme="davichen"] .bg-white\/\[0\.06\] { background-color: rgba(26,10,5,0.92) !important; backdrop-filter: blur(10px); }
+[data-theme="davichen"] .border-cyan-400\/20,
+[data-theme="davichen"] .border-cyan-400\/30,
+[data-theme="davichen"] .border-cyan-400\/40 { border-color: rgba(220,38,38,0.5) !important; }
+
+/* ===== KISTEN — carros + cash + mulheres ===== */
+[data-theme="kisten"] {
+  --tp-bg: #0a0a0a; --tp-card: rgba(239,68,68,0.10); --tp-fg: #fecaca;
+  --tp-accent: #ef4444; --tp-accent-soft: rgba(239,68,68,0.22);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(239,68,68,0.28), transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(250,204,21,0.20), transparent 50%),
+    linear-gradient(180deg, #1a1010 0%, #000000 100%) !important;
+}
+[data-theme="kisten"] .text-cyan-300,
+[data-theme="kisten"] .text-cyan-400 { color: #ef4444 !important; text-shadow: 0 0 10px rgba(239,68,68,0.7); }
+[data-theme="kisten"] .bg-cyan-400 { background: linear-gradient(135deg, #ef4444 0%, #facc15 100%) !important; color: #0a0a0a !important; }
+[data-theme="kisten"] .bg-white\/\[0\.02\],
+[data-theme="kisten"] .bg-white\/\[0\.03\],
+[data-theme="kisten"] .bg-white\/\[0\.04\],
+[data-theme="kisten"] .bg-white\/\[0\.06\] { background-color: rgba(10,10,10,0.92) !important; backdrop-filter: blur(10px); }
+[data-theme="kisten"] .border-cyan-400\/20,
+[data-theme="kisten"] .border-cyan-400\/30,
+[data-theme="kisten"] .border-cyan-400\/40 { border-color: rgba(239,68,68,0.5) !important; }
+
+/* ===== RENAN — óculos + mulheres + cash + armas ===== */
+[data-theme="renan"] {
+  --tp-bg: #0a0a0a; --tp-card: rgba(82,82,82,0.10); --tp-fg: #e5e5e5;
+  --tp-accent: #facc15; --tp-accent-soft: rgba(250,204,21,0.22);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(82,82,82,0.30), transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(250,204,21,0.18), transparent 50%),
+    linear-gradient(180deg, #171717 0%, #000000 100%) !important;
+}
+[data-theme="renan"] .text-cyan-300,
+[data-theme="renan"] .text-cyan-400 { color: #facc15 !important; text-shadow: 0 0 10px rgba(250,204,21,0.7); }
+[data-theme="renan"] .bg-cyan-400 { background: linear-gradient(135deg, #facc15 0%, #525252 100%) !important; color: #0a0a0a !important; }
+[data-theme="renan"] .bg-white\/\[0\.02\],
+[data-theme="renan"] .bg-white\/\[0\.03\],
+[data-theme="renan"] .bg-white\/\[0\.04\],
+[data-theme="renan"] .bg-white\/\[0\.06\] { background-color: rgba(10,10,10,0.93) !important; backdrop-filter: blur(10px); }
+[data-theme="renan"] .border-cyan-400\/20,
+[data-theme="renan"] .border-cyan-400\/30,
+[data-theme="renan"] .border-cyan-400\/40 { border-color: rgba(250,204,21,0.5) !important; }
+
+/* ===== PALUMBIUN — Audi SUV + cash + plantas ===== */
+[data-theme="palumbiun"] {
+  --tp-bg: #020a08; --tp-card: rgba(22,163,74,0.10); --tp-fg: #bbf7d0;
+  --tp-accent: #16a34a; --tp-accent-soft: rgba(22,163,74,0.22);
+  background:
+    radial-gradient(circle at 30% 25%, rgba(148,163,184,0.22), transparent 50%),
+    radial-gradient(circle at 70% 75%, rgba(22,163,74,0.28), transparent 55%),
+    linear-gradient(180deg, #0a1a14 0%, #000505 100%) !important;
+}
+[data-theme="palumbiun"] .text-cyan-300,
+[data-theme="palumbiun"] .text-cyan-400 { color: #22c55e !important; text-shadow: 0 0 10px rgba(34,197,94,0.7); }
+[data-theme="palumbiun"] .bg-cyan-400 { background: linear-gradient(135deg, #94a3b8 0%, #16a34a 100%) !important; color: #020a08 !important; }
+[data-theme="palumbiun"] .bg-white\/\[0\.02\],
+[data-theme="palumbiun"] .bg-white\/\[0\.03\],
+[data-theme="palumbiun"] .bg-white\/\[0\.04\],
+[data-theme="palumbiun"] .bg-white\/\[0\.06\] { background-color: rgba(2,10,8,0.93) !important; backdrop-filter: blur(10px); }
+[data-theme="palumbiun"] .border-cyan-400\/20,
+[data-theme="palumbiun"] .border-cyan-400\/30,
+[data-theme="palumbiun"] .border-cyan-400\/40 { border-color: rgba(22,163,74,0.5) !important; }
+
+/* ===== CAMILLO — mulheres + fogo + TikTok ===== */
+[data-theme="camillo"] {
+  --tp-bg: #0a0010; --tp-card: rgba(255,0,80,0.10); --tp-fg: #fce7f3;
+  --tp-accent: #ff0050; --tp-accent-soft: rgba(255,0,80,0.22);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(236,72,153,0.30), transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(255,0,80,0.22), transparent 50%),
+    linear-gradient(180deg, #1a0a22 0%, #000005 100%) !important;
+}
+[data-theme="camillo"] .text-cyan-300,
+[data-theme="camillo"] .text-cyan-400 { color: #ff0050 !important; text-shadow: 0 0 10px rgba(255,0,80,0.8), 0 0 16px rgba(34,211,238,0.4); }
+[data-theme="camillo"] .bg-cyan-400 { background: linear-gradient(135deg, #ff0050 0%, #ec4899 100%) !important; color: #fafafa !important; }
+[data-theme="camillo"] .bg-white\/\[0\.02\],
+[data-theme="camillo"] .bg-white\/\[0\.03\],
+[data-theme="camillo"] .bg-white\/\[0\.04\],
+[data-theme="camillo"] .bg-white\/\[0\.06\] { background-color: rgba(10,0,16,0.92) !important; backdrop-filter: blur(10px); }
+[data-theme="camillo"] .border-cyan-400\/20,
+[data-theme="camillo"] .border-cyan-400\/30,
+[data-theme="camillo"] .border-cyan-400\/40 { border-color: rgba(255,0,80,0.5) !important; }
+
+/* ===== LUCAS JAPA v2 — bandeira + saque 1M + cash ===== */
+[data-theme="lucasjapa"] {
+  --tp-bg: #1a0a0a; --tp-card: rgba(220,38,38,0.10); --tp-fg: #fee2e2;
+  --tp-accent: #dc2626; --tp-accent-soft: rgba(220,38,38,0.22);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><g opacity='0.10'><rect x='20' y='30' width='60' height='40' fill='%23fafafa'/><circle cx='50' cy='50' r='12' fill='%23dc2626'/><rect x='120' y='140' width='60' height='40' fill='%23fafafa'/><circle cx='150' cy='160' r='12' fill='%23dc2626'/><text x='40' y='130' font-family='sans-serif' font-weight='900' font-size='18' fill='%2310b981'>R%24 1.000.000</text></g></svg>"),
+    radial-gradient(circle at 50% 20%, rgba(220,38,38,0.28), transparent 55%),
+    radial-gradient(circle at 50% 80%, rgba(16,185,129,0.18), transparent 50%),
+    linear-gradient(180deg, #2a0606 0%, #050000 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed !important;
+}
+[data-theme="lucasjapa"] .text-cyan-300,
+[data-theme="lucasjapa"] .text-cyan-400 { color: #10b981 !important; text-shadow: 0 0 10px rgba(16,185,129,0.7); }
+[data-theme="lucasjapa"] .bg-cyan-400 { background: linear-gradient(135deg, #dc2626 0%, #10b981 100%) !important; color: #fafafa !important; }
+[data-theme="lucasjapa"] .bg-white\/\[0\.02\],
+[data-theme="lucasjapa"] .bg-white\/\[0\.03\],
+[data-theme="lucasjapa"] .bg-white\/\[0\.04\],
+[data-theme="lucasjapa"] .bg-white\/\[0\.06\] { background-color: rgba(26,10,10,0.92) !important; backdrop-filter: blur(10px); }
+[data-theme="lucasjapa"] .border-cyan-400\/20,
+[data-theme="lucasjapa"] .border-cyan-400\/30,
+[data-theme="lucasjapa"] .border-cyan-400\/40 { border-color: rgba(220,38,38,0.5) !important; }
+
+/* ===== HENRIQUE DO ROI — logos BMW espalhados + azul BMW + prata =====
+ * Tema premium exclusivo (R$ 250,00). Logo BMW composto por circulo com
+ * 4 quadrantes (2 azuis + 2 brancos) alternados, rotulo "BMW" na parte
+ * superior. Espalhados em 7 posicoes com escalas e rotacoes variadas.
+ * URL-encoded (# vira %23, espacos ficam literais em atributos). */
+[data-theme="henriquedoroi"] {
+  --tp-bg: #050a14;
+  --tp-card: rgba(28,105,212,0.10);
+  --tp-fg: #dbeafe;
+  --tp-accent: #1c69d4;
+  --tp-accent-soft: rgba(28,105,212,0.25);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'><defs><g id='bmw'><circle r='34' fill='%230f172a' stroke='%2394a3b8' stroke-width='2'/><circle r='28' fill='%23000000'/><path d='M0,0 L0,-28 A28,28 0 0,1 28,0 Z' fill='%231c69d4'/><path d='M0,0 L28,0 A28,28 0 0,1 0,28 Z' fill='%23ffffff'/><path d='M0,0 L0,28 A28,28 0 0,1 -28,0 Z' fill='%231c69d4'/><path d='M0,0 L-28,0 A28,28 0 0,1 0,-28 Z' fill='%23ffffff'/><circle r='28' fill='none' stroke='%23000000' stroke-width='2'/><text y='-16' text-anchor='middle' font-family='sans-serif' font-weight='900' font-size='9' fill='%23ffffff'>BMW</text></g></defs><g opacity='0.22'><use href='%23bmw' transform='translate(70,80) scale(0.9) rotate(-8)'/><use href='%23bmw' transform='translate(280,60) scale(1.1) rotate(12)'/><use href='%23bmw' transform='translate(50,220) scale(0.8) rotate(6)'/><use href='%23bmw' transform='translate(200,180) scale(1.3) rotate(-4)'/><use href='%23bmw' transform='translate(340,240) scale(0.85) rotate(15)'/><use href='%23bmw' transform='translate(120,340) scale(1.0) rotate(-10)'/><use href='%23bmw' transform='translate(300,360) scale(0.9) rotate(8)'/></g></svg>"),
+    radial-gradient(circle at 25% 15%, rgba(28,105,212,0.28), transparent 55%),
+    radial-gradient(circle at 75% 85%, rgba(148,163,184,0.15), transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(28,105,212,0.10), transparent 60%),
+    linear-gradient(180deg, #0a1428 0%, #020617 100%) !important;
+  background-attachment: fixed, fixed, fixed, fixed, fixed !important;
+}
+[data-theme="henriquedoroi"] .text-cyan-300,
+[data-theme="henriquedoroi"] .text-cyan-400 {
+  color: #60a5fa !important;
+  text-shadow: 0 0 12px rgba(28,105,212,0.7);
+}
+[data-theme="henriquedoroi"] .bg-cyan-400 {
+  background: linear-gradient(135deg, #1c69d4 0%, #60a5fa 100%) !important;
+  color: #ffffff !important;
+}
+[data-theme="henriquedoroi"] .bg-cyan-400:hover {
+  background: linear-gradient(135deg, #60a5fa 0%, #93c5fd 100%) !important;
+}
+[data-theme="henriquedoroi"] .bg-white\/\[0\.02\],
+[data-theme="henriquedoroi"] .bg-white\/\[0\.03\],
+[data-theme="henriquedoroi"] .bg-white\/\[0\.04\],
+[data-theme="henriquedoroi"] .bg-white\/\[0\.06\] {
+  background-color: rgba(10,20,40,0.92) !important;
+  backdrop-filter: blur(10px);
+}
+[data-theme="henriquedoroi"] .border-cyan-400\/20,
+[data-theme="henriquedoroi"] .border-cyan-400\/30,
+[data-theme="henriquedoroi"] .border-cyan-400\/40 {
+  border-color: rgba(28,105,212,0.5) !important;
+}

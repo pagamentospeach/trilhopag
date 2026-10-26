@@ -1,0 +1,87 @@
+name: Deploy to Vercel (Pro)
+
+# Deploy pro projeto Pro (time henriqdoroi-2968s-projects) via Vercel API
+# gitSource: a Vercel CLONA o repo e BUILDA na infra dela (sem upload da CLI,
+# sem limite free). Usamos a API em vez do auto-deploy nativo do Git porque
+# esse projeto bloqueia deploys git-push (BLOCKED) — a API gitSource gera
+# deployment READY normal.
+#
+# ⚠️ Usa secret VERCEL_TOKEN_PRO. Se o token expirar, recrie um token na
+# conta henriqdoroi-2968 e atualize o secret:
+#   gh secret set VERCEL_TOKEN_PRO --body "<novo_token>" -R <seu-usuario>/trilhopag
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - ".github/**"
+      - "**.md"
+  workflow_dispatch:
+
+env:
+  TEAM_ID: team_50UEHKbxkfDtLxmDfFdvQkwo
+  PROJECT_ID: prj_fACaJTiAuHsE8oPKJw66I22MIWzk
+  REPO_ID: "1247050228"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger production deploy (gitSource) + poll
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN_PRO }}
+        run: |
+          set -e
+          API="https://api.vercel.com"
+          echo "→ Disparando deploy production (gitSource main)…"
+          RESP=$(curl -sS -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
+            "$API/v13/deployments?teamId=$TEAM_ID" \
+            -d "{\"name\":\"trilhopag\",\"project\":\"$PROJECT_ID\",\"target\":\"production\",\"gitSource\":{\"type\":\"github\",\"repoId\":$REPO_ID,\"ref\":\"main\"}}")
+          ERR=$(echo "$RESP" | jq -r '.error.code // empty')
+          if [ -n "$ERR" ]; then
+            echo "✗ erro ao criar deploy: $ERR"
+            echo "$RESP" | jq '.error'
+            exit 1
+          fi
+          DID=$(echo "$RESP" | jq -r '.id')
+          echo "  deployment=$DID"
+          echo "→ aguardando READY…"
+          for i in $(seq 1 40); do
+            sleep 12
+            ST=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" "$API/v13/deployments/$DID?teamId=$TEAM_ID" | jq -r '.readyState // "?"')
+            echo "  [$i] $ST"
+            case "$ST" in
+              READY)
+                echo "✓ deploy READY ($DID)"
+                # ──────────────────────────────────────────────────────────
+                # Re-aponta TODOS os domínios de produção pro deploy NOVO.
+                # O deploy gitSource só re-aliasa o domínio primário
+                # (trilhopag.com) automaticamente — os domínios PRÓPRIOS dos
+                # sellers ficavam PRESOS num deploy velho, então código novo
+                # (ex: redirect de upsell) nunca chegava nos checkouts reais.
+                # Aqui forçamos o alias pra cada domínio do projeto. É o que
+                # garante "upsell funciona em TODO domínio, sempre".
+                # Best-effort: NÃO derruba o deploy se um alias falhar.
+                # ──────────────────────────────────────────────────────────
+                set +e
+                echo "→ re-aliasando domínios de produção pro deploy $DID…"
+                DOMS=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+                  "$API/v9/projects/$PROJECT_ID/domains?teamId=$TEAM_ID&limit=200" \
+                  | jq -r '.domains[]? | select((.gitBranch // "") == "" and (.redirect // null) == null) | .name')
+                AOK=0; AERR=0
+                for d in $DOMS; do
+                  AR=$(curl -sS -X POST -H "Authorization: Bearer $VERCEL_TOKEN" \
+                    -H "Content-Type: application/json" \
+                    "$API/v2/deployments/$DID/aliases?teamId=$TEAM_ID" \
+                    -d "{\"alias\":\"$d\"}")
+                  AE=$(echo "$AR" | jq -r '.error.code // empty')
+                  if [ -n "$AE" ]; then echo "  ⚠ $d → $AE"; AERR=$((AERR+1));
+                  else echo "  ✓ $d"; AOK=$((AOK+1)); fi
+                done
+                echo "→ alias concluído: $AOK ok, $AERR erro(s)"
+                exit 0
+                ;;
+              ERROR|CANCELED|BLOCKED) echo "✗ deploy $ST"; exit 1 ;;
+            esac
+          done
+          echo "⚠ timeout aguardando READY"; exit 1

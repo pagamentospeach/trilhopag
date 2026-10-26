@@ -1,0 +1,9 @@
+# Env vem das Project Settings da Vercel, nunca do disco. Um .env.production
+# .local herdado da copia do repo original sobrescreveria segredos em build.
+.env
+.env.*
+
+# Subprojetos que nao fazem parte do app deployado (ver tsconfig "exclude").
+remotion-video
+tracking-export
+scripts

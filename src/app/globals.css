@@ -1,0 +1,964 @@
+@import "tailwindcss";
+
+/* themes.css NAO mora mais aqui (08/08/2026). Sao 125 skins, 120kb de fonte,
+ * ~40kb brotli depois de compilado — e TODO seletor dela e escopado em
+ * [data-theme], atributo que so existe no wrapper do /dashboard. Importada
+ * aqui ela vinha junto na folha global, entao quem abria a landing, o login,
+ * o cadastro ou (pior) um checkout baixava e parseava 125 temas que nao tinha
+ * como aplicar. Agora ela e importada em src/app/dashboard/layout.tsx e o Next
+ * emite uma folha propria da rota do painel. */
+
+:root {
+  --background: #050505;
+  --foreground: #fafafa;
+  --accent: #22d3ee;
+  --accent-soft: rgba(34, 211, 238, 0.12);
+  --border: rgba(255, 255, 255, 0.08);
+
+  /* Rótulos das saídas dos nós no construtor de funil (produtos/funil e
+   * bots/[id]/funil). Existem como variável porque lá as cores são `style`
+   * inline em hex, e a inversão de tema do themes.css só alcança CLASSE do
+   * Tailwind — inline passa batido. Eram o "produto/bots ilegível no tema
+   * claro" (davi, 08/08/2026): texto laranja/ciano/vermelho sobre um fundo do
+   * mesmo tom a 13%, o que no escuro é legível e no branco some.
+   * O override claro mora em styles/themes.css. */
+  --tp-port-warn: #f59e0b;
+  --tp-port-ok: #06b6d4;
+  --tp-port-bad: #ef4444;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Paleta oficial da marca, usada pela landing (tema claro). O resto do app
+   * roda no tema escuro herdado com cyan-400 — os dois tons sao praticamente
+   * o mesmo ciano, entao nao vale reescrever 1.3k classes pra unificar. */
+  --color-brand: #33d2d9;
+  --color-ink: #071a33;
+  --color-mist: #f7f9fa;
+  /* O mesmo ciano, escurecido pra virar TEXTO em fundo claro. #33d2d9 no
+   * branco da 1.9:1 de contraste — ilegivel em corpo pequeno. Este da 4.6:1,
+   * entao passa no AA ate no mono de 10px da tela de boot. Serve so pra
+   * glifo/texto; area pintada continua no brand normal. */
+  --color-brand-deep: #0b7a82;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* iOS: viewport sem rebote/glitch ao rolar */
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  /* Evita overscroll bounce no iOS quando dentro de PWA standalone */
+  overscroll-behavior-y: contain;
+}
+
+/* === MOBILE: previne iOS zoom-on-focus em inputs ===
+ * Safari iOS dá zoom automático quando input tem font-size < 16px.
+ * Forçar 16px em todos os inputs/textareas/selects evita esse glitch. */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* iOS PWA / standalone: respeita safe area sob notch/home indicator */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+}
+
+::selection {
+  background: var(--accent);
+  color: #000;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Esconde scrollbar sem tirar rolagem — usado em nav horizontal mobile
+ * (evita scrollbar feia embaixo da linha de botões). */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(
+    ellipse 80% 60% at 50% 0%,
+    #000 0%,
+    transparent 80%
+  );
+}
+
+.glow {
+  background: radial-gradient(
+    ellipse 60% 50% at 50% 0%,
+    rgba(34, 211, 238, 0.18) 0%,
+    transparent 70%
+  );
+}
+
+.noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ============ Chuva de pontinhos (components/falling-dots.tsx) ============
+   Detalhe estético de fundo. Só `transform` e `opacity` — o browser resolve
+   no compositor, sem tocar em layout nem paint. Ver o componente pra o
+   porquê da tabela fixa de posições. */
+.tp-dot {
+  position: absolute;
+  top: 0;
+  border-radius: 9999px;
+  background-color: #33d2d9;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation-name: tp-dot-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes tp-dot-fall {
+  /* Começa e termina invisível: o ponto nasce e morre no meio do nada, então
+     ninguém vê a emenda do loop. */
+  0% {
+    transform: translate3d(0, -10vh, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: var(--tp-dot-opacity, 0.4);
+  }
+  85% {
+    opacity: var(--tp-dot-opacity, 0.4);
+  }
+  100% {
+    transform: translate3d(0, 110vh, 0);
+    opacity: 0;
+  }
+}
+
+/* No tema claro o ciano puro some no branco — escurece um tico pra continuar
+   perceptível sem virar sujeira na tela. */
+[data-theme="daylight"] .tp-dot {
+  background-color: #17a8b3;
+}
+
+/* Mesmo tom fechado, mas forçado: telas que são brancas sempre (login,
+   cadastro) não passam pelo `data-theme`, então o seletor acima não pega. */
+.tp-dots-ink .tp-dot {
+  background-color: #17a8b3;
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50% { transform: translate3d(0, -12px, 0) rotate(0.4deg); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.65; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Barra de faturamento do topbar (06/08/2026, davi: "deixa essa barra de
+   faturamento mais estetica mais bonita"). Um brilho fino varre SÓ o trecho
+   já preenchido e some por um tempo antes de voltar — a barra respira em vez
+   de piscar sem parar do lado do olho do seller.
+   O elemento tem 25% da largura do fill, então translateX(-100% → 500%)
+   equivale a atravessar 150% dele: entra e sai completamente. */
+@keyframes bp-revenue-sheen {
+  0%        { transform: translateX(-100%); }
+  55%, 100% { transform: translateX(500%); }
+}
+.animate-bp-revenue-sheen {
+  animation: bp-revenue-sheen 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(34, 211, 238, 0.4) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2.5s linear infinite;
+}
+
+/* === Melhor adquirente do momento (maior conversão na última 1h) ===
+ * Barra lateral pulsante ciano↔dourado + brilho interno + leve tint no fundo.
+ * Só box-shadow/background (sem transform) pra não criar containing block. */
+@keyframes bp-best-glow {
+  0%,
+  100% {
+    box-shadow:
+      inset 3px 0 0 0 rgba(34, 211, 238, 0.55),
+      inset 0 0 22px -10px rgba(34, 211, 238, 0.45);
+  }
+  50% {
+    box-shadow:
+      inset 3px 0 0 0 rgba(250, 204, 21, 0.9),
+      inset 0 0 34px -6px rgba(34, 211, 238, 0.7);
+  }
+}
+.bp-best-row {
+  background: linear-gradient(
+    90deg,
+    rgba(34, 211, 238, 0.12),
+    rgba(16, 185, 129, 0.05) 55%,
+    transparent
+  );
+  animation: bp-best-glow 2.6s ease-in-out infinite;
+}
+@keyframes bp-best-sheen {
+  to {
+    background-position: -200% center;
+  }
+}
+.bp-best-badge {
+  background-image: linear-gradient(
+    110deg,
+    #22d3ee 0%,
+    #fde047 30%,
+    #34d399 60%,
+    #22d3ee 100%
+  );
+  background-size: 200% 100%;
+  animation: bp-best-sheen 3s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bp-best-row,
+  .bp-best-badge {
+    animation: none;
+  }
+}
+
+.text-gradient-cyan {
+  background: linear-gradient(135deg, #22d3ee 0%, #a5f3fc 50%, #22d3ee 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.text-stroke {
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.12);
+  color: transparent;
+}
+
+.dot-pattern {
+  background-image: radial-gradient(
+    rgba(255, 255, 255, 0.07) 1px,
+    transparent 1px
+  );
+  background-size: 18px 18px;
+}
+
+.card-shine {
+  position: relative;
+  overflow: hidden;
+}
+.card-shine::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent 70%
+  );
+  transform: translateX(-100%);
+  transition: transform 0.7s ease;
+  pointer-events: none;
+}
+.card-shine:hover::before {
+  transform: translateX(100%);
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Page enter animation — sutil, todo carregamento de página dá uma "respirada".
+ * IMPORTANT: SO usa opacity (sem transform/filter) porque o <main> contem
+ * modais position:fixed — transform/filter no main cria containing block
+ * que faz modais ficarem "fixed dentro do main" em vez do viewport. */
+@keyframes bp-page-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-bp-page-enter {
+  animation: bp-page-enter 0.3s ease-out;
+}
+
+/* === Welcome animation (após aprovação KYC) === */
+@keyframes bp-welcome {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+    filter: blur(8px);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1.02);
+    filter: blur(0);
+  }
+  72% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+    filter: blur(4px);
+  }
+}
+.animate-bp-welcome {
+  animation: bp-welcome 4.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes bp-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+.animate-bp-pulse {
+  animation: bp-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes bp-progress-fill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+.animate-bp-progress-fill {
+  animation: bp-progress-fill 4.2s linear forwards;
+}
+
+/* === Entry animations (07/07/2026, david) ===
+ * Elementos da dashboard entram com fade + slide from bottom, em cascata
+ * (stagger). Curve custom cubic-bezier pra dar sensacao "clean/mov" tipo
+ * frameworks modernos (Vercel/Linear/etc). Nao usa transform em elementos
+ * que contem modais position:fixed — nesse caso, .animate-bp-in-fade (só
+ * opacity) previne containing-block bug.
+ *
+ * ---- POR QUE `backwards` E NAO `both` (05/08/2026, davi: "nao ta dando
+ * pra clicar aqui, ta bugado") ----
+ * O mesmo containing-block bug que o comentario do bp-page-enter (linha
+ * ~241) descreve voltou por DOIS caminhos mais sutis que `transform:` no
+ * CSS:
+ *
+ *   1. `animation-fill-mode: both` faz o elemento CONGELAR no ultimo
+ *      keyframe pra sempre. O ultimo keyframe daqui e `translateY(0)` —
+ *      que e um transform IDENTIDADE, mas NAO e `none`. Pro CSS, qualquer
+ *      transform != none cria containing block. Ou seja: a animacao
+ *      terminava e deixava a armadilha armada permanentemente.
+ *   2. `will-change: transform` cria containing block SOZINHO, mesmo sem
+ *      nenhuma animacao rodando (CSS Will Change spec).
+ *
+ * Resultado: TODO card top-level de pagina virava o "viewport" dos modais
+ * `fixed inset-0` de dentro dele. No /dashboard/integracoes/canal-vendas o
+ * overlay do modal media 638x81 (a caixa do card) em vez de cobrir a tela,
+ * e o banner verde logo abaixo — que tambem virou stacking context e vem
+ * DEPOIS no DOM — era quem recebia os cliques.
+ *
+ * `backwards` mantem a animacao identica (segura o primeiro keyframe
+ * durante o delay) mas, ao terminar, devolve o elemento pro estilo normal:
+ * transform: none, sem residuo. E o `will-change` sai porque pra animacao
+ * de entrada de 520ms o ganho e nulo e o custo e esse bug + uma camada de
+ * compositor permanente por card.
+ *
+ * Regra: animacao de ENTRADA usa `backwards`. Animacao de SAIDA (os
+ * popover-out) continua `both` — essa precisa mesmo congelar no fim,
+ * senao o elemento pisca de volta antes de desmontar.
+ */
+@keyframes bp-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-bp-in-up {
+  animation: bp-in-up 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@keyframes bp-in-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-bp-in-scale {
+  animation: bp-in-scale 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@keyframes bp-in-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-bp-in-fade {
+  animation: bp-in-fade 480ms ease-out both;
+}
+
+/* Stagger delays — aplique junto com .animate-bp-in-*.
+ * Ex: <div class="animate-bp-in-up bp-delay-3"> */
+.bp-delay-1 { animation-delay: 40ms; }
+.bp-delay-2 { animation-delay: 100ms; }
+.bp-delay-3 { animation-delay: 170ms; }
+.bp-delay-4 { animation-delay: 240ms; }
+.bp-delay-5 { animation-delay: 310ms; }
+.bp-delay-6 { animation-delay: 380ms; }
+.bp-delay-7 { animation-delay: 450ms; }
+.bp-delay-8 { animation-delay: 520ms; }
+.bp-delay-9 { animation-delay: 590ms; }
+.bp-delay-10 { animation-delay: 660ms; }
+
+/* ---- STAGGER AUTOMATICO DE PAGINA (07/07/2026 v2, david): "carregar os
+ * elementos com animacao mov pra ficar clean". Aplicado no <PageTransition>
+ * wrapper (.bp-page-in) — pega o padrao <div class="max-w-Nxl space-y-Y">
+ * dos server components e anima os filhos TOP-LEVEL (netos do wrapper) em
+ * cascata. Zero mudanca nas paginas individuais.
+ *
+ * Estrutura:
+ *   .bp-page-in  (wrapper do PageTransition)
+ *     > *        (div outer da pagina)
+ *       > *      (elementos top-level = filhos que animam)
+ *
+ * Sem opacity:0 explicito (animation `both` ja cuida).
+ */
+.bp-page-in > * > * {
+  animation: bp-in-up 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.bp-page-in > * > *:nth-child(1) { animation-delay: 40ms; }
+.bp-page-in > * > *:nth-child(2) { animation-delay: 100ms; }
+.bp-page-in > * > *:nth-child(3) { animation-delay: 170ms; }
+.bp-page-in > * > *:nth-child(4) { animation-delay: 240ms; }
+.bp-page-in > * > *:nth-child(5) { animation-delay: 310ms; }
+.bp-page-in > * > *:nth-child(6) { animation-delay: 380ms; }
+.bp-page-in > * > *:nth-child(7) { animation-delay: 450ms; }
+.bp-page-in > * > *:nth-child(n+8) { animation-delay: 520ms; } /* cap */
+
+/* EXCLUI MODAIS/OVERLAYS do stagger (07/07/2026 v2, david):
+ * Modais renderizados condicionalmente dentro da pagina (ex: purchase
+ * de tema em /dashboard/aparencia) sao filhos diretos do outer <div>
+ * — o seletor .bp-page-in > * > * pegava eles tambem e aplicava opacity:0
+ * durante o delay, resultando em "so o blur aparece, o modal fica
+ * invisivel". Fix: exclui qualquer descendente com fixed positioning
+ * ou marcado data-nostagger. */
+.bp-page-in > * > *[class*="fixed inset-0"],
+.bp-page-in > * > *[data-nostagger] {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+/* Dropdown/popover enter+exit (07/07/2026, david): usado no
+ * AccountSwitcher e outros popups que abrem lateralmente.
+ * Tailwind 4 nao vem com tailwindcss-animate — keyframes proprios. */
+@keyframes bp-popover-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+@keyframes bp-popover-out-left {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-8px) scale(0.98);
+  }
+}
+.animate-bp-popover-in {
+  animation: bp-popover-in-left 200ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  transform-origin: left center;
+}
+.animate-bp-popover-out {
+  animation: bp-popover-out-left 150ms cubic-bezier(0.4, 0, 1, 1) both;
+  transform-origin: left center;
+  will-change: transform, opacity;
+}
+
+/* Variantes pra dropdowns que abrem PRA BAIXO (topbar: idiomas, notificacoes,
+ * menu do avatar). Puxam 8px do topo em vez da esquerda. */
+@keyframes bp-popover-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes bp-popover-out-top {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+.animate-bp-popover-in-top {
+  animation: bp-popover-in-top 200ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  transform-origin: top right;
+}
+.animate-bp-popover-out-top {
+  animation: bp-popover-out-top 150ms cubic-bezier(0.4, 0, 1, 1) both;
+  transform-origin: top right;
+  will-change: transform, opacity;
+}
+
+/* Stagger interno pra LISTAS (linhas de tabela, cards de venda, etc).
+ * Aplicar em containers de lista: <div class="bp-in-rows"> ... </div>.
+ * Delays comecam DEPOIS dos elementos da pagina (~350ms) pra o efeito
+ * ficar em ondas: pagina entra → tabela materializa → linhas escorrem
+ * uma por uma. Cap em 12 pra listas longas. Duracao mais curta (400ms)
+ * porque sao muitos elementos e nao pode ficar arrastado. */
+.bp-in-rows > * {
+  animation: bp-in-up 400ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.bp-in-rows > *:nth-child(1)  { animation-delay: 350ms; }
+.bp-in-rows > *:nth-child(2)  { animation-delay: 400ms; }
+.bp-in-rows > *:nth-child(3)  { animation-delay: 445ms; }
+.bp-in-rows > *:nth-child(4)  { animation-delay: 485ms; }
+.bp-in-rows > *:nth-child(5)  { animation-delay: 520ms; }
+.bp-in-rows > *:nth-child(6)  { animation-delay: 550ms; }
+.bp-in-rows > *:nth-child(7)  { animation-delay: 580ms; }
+.bp-in-rows > *:nth-child(8)  { animation-delay: 605ms; }
+.bp-in-rows > *:nth-child(9)  { animation-delay: 630ms; }
+.bp-in-rows > *:nth-child(10) { animation-delay: 650ms; }
+.bp-in-rows > *:nth-child(11) { animation-delay: 670ms; }
+.bp-in-rows > *:nth-child(12) { animation-delay: 690ms; }
+.bp-in-rows > *:nth-child(n+13) { animation-delay: 710ms; }
+
+/* Respeita usuarios com prefers-reduced-motion — desliga tudo. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-bp-in-up,
+  .animate-bp-in-scale,
+  .animate-bp-in-fade,
+  .animate-bp-page-enter,
+  .animate-bp-popover-in,
+  .animate-bp-popover-out,
+  .animate-bp-popover-in-top,
+  .animate-bp-popover-out-top,
+  .animate-bp-revenue-sheen,
+  .bp-page-in > * > *,
+  .bp-in-rows > * {
+    animation: none !important;
+  }
+  /* A chuva de pontinhos some inteira: parada no topo da tela ela viraria uma
+     fileira de sujeira, então o certo é não existir. */
+  .tp-dots {
+    display: none !important;
+  }
+}
+
+/* ============ React Flow (funil / mapa mental) — tema escuro ============ */
+/* O CSS padrão do @xyflow é claro (botões brancos) e fica ilegível no dark.
+   Sobrescreve controles + minimap pro tema do gateway. */
+.react-flow__controls {
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.6) !important;
+}
+.react-flow__controls-button {
+  background: #18181b !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+  width: 30px;
+  height: 30px;
+}
+.react-flow__controls-button:hover {
+  background: #27272a !important;
+}
+.react-flow__controls-button svg {
+  fill: #d4d4d8 !important;
+  max-width: 14px;
+  max-height: 14px;
+}
+.react-flow__controls-button:disabled svg {
+  fill: #52525b !important;
+}
+.react-flow__minimap {
+  background: #18181b !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+}
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* ============ Blog article typography (SEO posts) ============ */
+.bp-blog-article p {
+  color: rgb(212 212 216);
+  line-height: 1.75;
+  margin: 1rem 0;
+  font-size: 1rem;
+}
+.bp-blog-article h2 {
+  color: rgb(255 255 255);
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 2.5rem 0 1rem;
+  letter-spacing: -0.01em;
+}
+.bp-blog-article h3 {
+  color: rgb(255 255 255);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 2rem 0 0.75rem;
+}
+.bp-blog-article strong {
+  color: rgb(255 255 255);
+  font-weight: 600;
+}
+.bp-blog-article a {
+  color: rgb(163 230 53);
+  text-decoration: none;
+}
+.bp-blog-article a:hover {
+  text-decoration: underline;
+}
+.bp-blog-article ul,
+.bp-blog-article ol {
+  color: rgb(212 212 216);
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+  line-height: 1.75;
+}
+.bp-blog-article ul {
+  list-style: disc;
+}
+.bp-blog-article ol {
+  list-style: decimal;
+}
+.bp-blog-article li {
+  margin: 0.375rem 0;
+}
+.bp-blog-article code {
+  color: rgb(190 242 100);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-size: 0.875em;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+.bp-blog-article em {
+  color: rgb(228 228 231);
+  font-style: italic;
+}
+
+/* ============================================================
+ * BOOT DO PAINEL — primeira entrada depois do cadastro.
+ * Ver components/dashboard/system-boot.tsx. Tudo aqui anima só
+ * transform/opacity/stroke pra rodar na GPU e não repintar layout.
+ * ============================================================ */
+@keyframes tpb-scan {
+  0% {
+    transform: translateY(-30vh);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(130vh);
+    opacity: 0;
+  }
+}
+@keyframes tpb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes tpb-spin-rev {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+@keyframes tpb-draw {
+  from {
+    stroke-dashoffset: var(--tpb-len);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes tpb-item-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tpb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tpb-track {
+  from {
+    letter-spacing: 0.55em;
+    opacity: 0;
+  }
+  to {
+    letter-spacing: 0.24em;
+    opacity: 1;
+  }
+}
+@keyframes tpb-flare {
+  from {
+    transform: scale(0.7);
+    opacity: 0.55;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+@keyframes tpb-corner {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Malha de fundo. Em tinta, nao em ciano: no fundo branco (08/08/2026) um
+ * ciano a 7% simplesmente some, e a linha de tinta clara le como papel
+ * milimetrado — que e a leitura certa pra uma tela de instrumento clara. */
+.tpb-grid {
+  background-image:
+    linear-gradient(rgba(7, 26, 51, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(7, 26, 51, 0.055) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 50% 50%, #000 10%, transparent 72%);
+}
+.tpb-scan {
+  animation: tpb-scan 2.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.tpb-spin-slow {
+  animation: tpb-spin 14s linear infinite;
+}
+.tpb-spin-fast-rev {
+  animation: tpb-spin-rev 7s linear infinite;
+}
+.tpb-draw {
+  stroke-dasharray: var(--tpb-len);
+  animation: tpb-draw 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.tpb-item {
+  animation: tpb-item-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.tpb-rise {
+  animation: tpb-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.tpb-track {
+  animation: tpb-track 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.tpb-flare {
+  animation: tpb-flare 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.tpb-corner {
+  animation: tpb-corner 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Quem pediu menos movimento continua vendo a tela, parada. Os keyframes
+ * terminam todos no estado neutro (opacity 1, sem transform), então tirar a
+ * animação já entrega o quadro final — menos o scan e os anéis girando, que
+ * são justamente os dois que dão enjoo, e o flare, que sem animação viraria
+ * um anel parado no meio da tela. */
+@media (prefers-reduced-motion: reduce) {
+  .tpb-draw,
+  .tpb-item,
+  .tpb-rise,
+  .tpb-corner,
+  .tpb-spin-slow,
+  .tpb-spin-fast-rev {
+    animation: none;
+  }
+  .tpb-track {
+    animation: none;
+    letter-spacing: 0.24em;
+  }
+  .tpb-scan,
+  .tpb-flare {
+    display: none;
+  }
+}
+
+/* =========================================================================
+   LANDING — as tres animacoes da pagina publica, em CSS
+   =========================================================================
+   08/08/2026: a landing carregava a `motion` inteira (~48kb brotli, mais o
+   custo de parse e de montar o motion tree em cada elemento) pra fazer tres
+   coisas: subir dois blocos no hero, subir cada secao quando entra na tela, e
+   abrir o accordion do FAQ. Nenhuma das tres precisa de biblioteca, e essa era
+   a maior peca de JS da primeira tela que alguem ve do produto.
+
+   Tudo aqui e so transform/opacity (e um grid-template-rows, que o navegador
+   tambem interpola sem tocar em layout dos filhos), entao roda no compositor. */
+
+@keyframes tp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--tp-rise-from, 20px));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Entrada do hero: dispara no primeiro paint, sem esperar hidratacao — e o
+ * LCP da pagina, nao pode depender de JS ter baixado. `backwards` segura o
+ * quadro inicial durante o delay, senao o bloco pisca visivel antes de comecar. */
+.tp-hero-rise {
+  animation: tp-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* Entrada por scroll. Comeca escondido e so anima quando o observer marca
+ * data-shown — sem o observer (JS quebrado, bot, browser antigo) o
+ * `:not([data-shown])` some junto e o conteudo aparece normal. */
+.tp-reveal {
+  opacity: 0;
+  --tp-rise-from: 16px;
+}
+.tp-reveal[data-shown] {
+  animation: tp-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Flutuacao do mascote. */
+@keyframes tp-float {
+  50% {
+    transform: translateY(-10px);
+  }
+}
+.tp-float {
+  animation: tp-float 5.5s ease-in-out infinite;
+}
+
+/* Accordion do FAQ sem medir altura: a linha do grid vai de 0fr a 1fr e o
+ * navegador interpola a altura de conteudo sozinho. E o unico jeito de animar
+ * "ate a altura natural" sem ler o DOM. O filho precisa do min-height:0, senao
+ * o tamanho minimo automatico do grid segura a linha aberta. */
+.tp-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition:
+    grid-template-rows 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 0;
+}
+.tp-collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.tp-collapse > * {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Quem pediu menos movimento ve tudo parado e no estado final. O reveal e o
+ * unico que precisa de mais que `animation: none`: ele nasce em opacity 0, e
+ * sem a animacao pra levar ate 1 a secao ficaria invisivel. */
+@media (prefers-reduced-motion: reduce) {
+  .tp-hero-rise,
+  .tp-float,
+  .tp-reveal[data-shown] {
+    animation: none;
+  }
+  .tp-reveal {
+    opacity: 1;
+  }
+  .tp-collapse {
+    transition: none;
+  }
+}
