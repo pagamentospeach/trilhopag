@@ -26,7 +26,6 @@ import { encryptString } from "@/lib/crypto";
 
 export const dynamic = "force-dynamic";
 
-const PIXZY_TOKEN = "319|1JqsN8ZQZvO5igcJWjsVwJtXvVwJQOszHb8ycJGia44223ab";
 const CODE = "pixzy-1";
 
 export async function POST(request: Request) {
@@ -36,7 +35,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const secretKeyEnc = encryptString(PIXZY_TOKEN);
+  const pixzyToken = process.env.PIXZY_TOKEN;
+  if (!pixzyToken) {
+    return NextResponse.json(
+      { error: "Variável de ambiente PIXZY_TOKEN não configurada" },
+      { status: 500 },
+    );
+  }
+
+  const secretKeyEnc = encryptString(pixzyToken);
 
   const existing = await prisma.acquirer.findUnique({
     where: { code: CODE },

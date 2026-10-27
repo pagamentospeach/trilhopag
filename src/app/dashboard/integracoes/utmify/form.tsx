@@ -139,7 +139,7 @@ export function UtmifyForm({
                 onChange={(e) => updateToken(i, e.target.value)}
                 placeholder={
                   i === 0
-                    ? "KVRxalfMiBfm8Rm1nP5YxfwYzArNsA0VLeWC"
+                    ? "Cole seu token da UTMify aqui"
                     : "Token de outra conta UTMify"
                 }
               />
